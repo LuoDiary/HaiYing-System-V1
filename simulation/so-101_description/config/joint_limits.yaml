@@ -1,0 +1,33 @@
+# SO-101 关节限位配置
+# 覆盖/增强 URDF 中定义的限位
+
+# 默认速度/加速度缩放因子（适合初学者，生产环境可调高至 1.0）
+default_velocity_scaling_factor: 0.1
+default_acceleration_scaling_factor: 0.1
+
+joint_limits:
+  J1_Rotation:
+    has_velocity_limits: true
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
+  J2_Shoulder_Pitch:
+    has_velocity_limits: true
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
+  J3_Elbow_Pitch:
+    has_velocity_limits: true
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
+  J4_Wrist_Pitch:
+    has_velocity_limits: true
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
+  J5_Wrist_Roll:
+    has_velocity_limits: true
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0

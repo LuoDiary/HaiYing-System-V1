@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+SO-101 5DOF 机械臂 MoveIt SRDF 配置
+
+运动学链 (串行):
+  base_footprint → base_link → [J1] → shoulder → [J2] → arm_upper
+  → [J3] → arm_lower → [J4] → wrist → [J5] → gripper_base → end_effector
+
+参照 SO-100-arm 模式: J5 从 Wrist_Pitch_Roll 直接到 Gripper
+-->
+<robot name="so101_arm">
+  <!-- ===== 运动规划组 ===== -->
+  <group name="arm">
+    <chain base_link="base_footprint" tip_link="end_effector"/>
+  </group>
+
+  <!-- ===== 预定义姿态 ===== -->
+  <group_state name="zero" group="arm">
+    <joint name="J1_Rotation" value="0"/>
+    <joint name="J2_Shoulder_Pitch" value="0"/>
+    <joint name="J3_Elbow_Pitch" value="0"/>
+    <joint name="J4_Wrist_Pitch" value="0"/>
+    <joint name="J5_Wrist_Roll" value="0"/>
+  </group_state>
+
+  <group_state name="folded" group="arm">
+    <joint name="J1_Rotation" value="0"/>
+    <joint name="J2_Shoulder_Pitch" value="-1.57"/>
+    <joint name="J3_Elbow_Pitch" value="1.57"/>
+    <joint name="J4_Wrist_Pitch" value="1.57"/>
+    <joint name="J5_Wrist_Roll" value="0"/>
+  </group_state>
+
+  <group_state name="extended" group="arm">
+    <joint name="J1_Rotation" value="0"/>
+    <joint name="J2_Shoulder_Pitch" value="0.3"/>
+    <joint name="J3_Elbow_Pitch" value="-0.8"/>
+    <joint name="J4_Wrist_Pitch" value="-0.5"/>
+    <joint name="J5_Wrist_Roll" value="0"/>
+  </group_state>
+
+  <!-- ===== 虚拟关节 ===== -->
+  <virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="base_footprint"/>
+
+  <!-- ===== 禁用碰撞检查 ===== -->
+  <disable_collisions link1="base_footprint" link2="base_link" reason="Adjacent"/>
+  <disable_collisions link1="base_link" link2="shoulder" reason="Adjacent"/>
+  <disable_collisions link1="shoulder" link2="arm_upper" reason="Adjacent"/>
+  <disable_collisions link1="arm_upper" link2="arm_lower" reason="Adjacent"/>
+  <disable_collisions link1="arm_lower" link2="wrist" reason="Adjacent"/>
+  <disable_collisions link1="wrist" link2="gripper_base" reason="Adjacent"/>
+  <disable_collisions link1="gripper_base" link2="end_effector" reason="Adjacent"/>
+
+  <!-- 非相邻但永不碰撞 -->
+  <disable_collisions link1="base_footprint" link2="shoulder" reason="Never"/>
+  <disable_collisions link1="base_footprint" link2="gripper_base" reason="Never"/>
+  <disable_collisions link1="base_link" link2="arm_lower" reason="Never"/>
+  <disable_collisions link1="base_link" link2="wrist" reason="Never"/>
+  <disable_collisions link1="base_link" link2="gripper_base" reason="Never"/>
+  <disable_collisions link1="shoulder" link2="wrist" reason="Never"/>
+  <disable_collisions link1="arm_upper" link2="gripper_base" reason="Never"/>
+</robot>

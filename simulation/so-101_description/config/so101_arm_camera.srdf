@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SO-101 带末端相机的 MoveIt SRDF；原 so101_arm.srdf 保持不变。 -->
+<robot name="so101_arm">
+  <group name="arm">
+    <chain base_link="base_footprint" tip_link="end_effector"/>
+  </group>
+
+  <group_state name="zero" group="arm">
+    <joint name="J1_Rotation" value="0"/>
+    <joint name="J2_Shoulder_Pitch" value="0"/>
+    <joint name="J3_Elbow_Pitch" value="0"/>
+    <joint name="J4_Wrist_Pitch" value="0"/>
+    <joint name="J5_Wrist_Roll" value="0"/>
+  </group_state>
+  <group_state name="folded" group="arm">
+    <joint name="J1_Rotation" value="0"/>
+    <joint name="J2_Shoulder_Pitch" value="-1.57"/>
+    <joint name="J3_Elbow_Pitch" value="1.57"/>
+    <joint name="J4_Wrist_Pitch" value="1.57"/>
+    <joint name="J5_Wrist_Roll" value="0"/>
+  </group_state>
+  <group_state name="extended" group="arm">
+    <joint name="J1_Rotation" value="0"/>
+    <joint name="J2_Shoulder_Pitch" value="0.3"/>
+    <joint name="J3_Elbow_Pitch" value="-0.8"/>
+    <joint name="J4_Wrist_Pitch" value="-0.5"/>
+    <joint name="J5_Wrist_Roll" value="0"/>
+  </group_state>
+
+  <virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="base_footprint"/>
+
+  <disable_collisions link1="base_footprint" link2="base_link" reason="Adjacent"/>
+  <disable_collisions link1="base_link" link2="shoulder" reason="Adjacent"/>
+  <disable_collisions link1="shoulder" link2="arm_upper" reason="Adjacent"/>
+  <disable_collisions link1="arm_upper" link2="arm_lower" reason="Adjacent"/>
+  <disable_collisions link1="arm_lower" link2="wrist" reason="Adjacent"/>
+  <disable_collisions link1="wrist" link2="gripper_base" reason="Adjacent"/>
+  <disable_collisions link1="gripper_base" link2="end_effector" reason="Adjacent"/>
+  <disable_collisions link1="gripper_base" link2="cam_holder" reason="Adjacent"/>
+  <disable_collisions link1="cam_holder" link2="wrist_camera_link" reason="Adjacent"/>
+
+  <disable_collisions link1="base_footprint" link2="shoulder" reason="Never"/>
+  <disable_collisions link1="base_footprint" link2="gripper_base" reason="Never"/>
+  <disable_collisions link1="base_link" link2="arm_lower" reason="Never"/>
+  <disable_collisions link1="base_link" link2="wrist" reason="Never"/>
+  <disable_collisions link1="base_link" link2="gripper_base" reason="Never"/>
+  <disable_collisions link1="shoulder" link2="wrist" reason="Never"/>
+  <disable_collisions link1="arm_upper" link2="gripper_base" reason="Never"/>
+</robot>

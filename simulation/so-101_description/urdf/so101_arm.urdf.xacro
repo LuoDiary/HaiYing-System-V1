@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<!--
+SO-101 5自由度机械臂主 URDF/XACRO 文件
+包含机身 + 舵机 + 末端执行器
+
+用法:
+  仅显示: xacro so101_arm.urdf.xacro
+  带仿真: xacro so101_arm.urdf.xacro use_sim:=true
+  虚拟硬件: xacro so101_arm.urdf.xacro use_fake_hardware:=true
+-->
+<robot name="so101_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="prefix" default=""/>
+  <xacro:arg name="use_sim" default="false"/>
+  <xacro:arg name="use_fake_hardware" default="false"/>
+
+  <!-- 机械臂主体宏 -->
+  <xacro:include filename="$(find so-101_description)/urdf/so101_arm_macro.urdf.xacro"/>
+  <xacro:so101_arm prefix="$(arg prefix)"/>
+
+  <!-- ros2_control 虚拟硬件 -->
+  <xacro:if value="$(arg use_fake_hardware)">
+    <ros2_control name="FakeSystem" type="system">
+      <hardware>
+        <plugin>fake_components/GenericSystem</plugin>
+      </hardware>
+      <joint name="$(arg prefix)J1_Rotation">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="$(arg prefix)J2_Shoulder_Pitch">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="$(arg prefix)J3_Elbow_Pitch">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="$(arg prefix)J4_Wrist_Pitch">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="$(arg prefix)J5_Wrist_Roll">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </ros2_control>
+  </xacro:if>
+
+  <!-- 固定到世界坐标系 (Gazebo仿真用) -->
+  <xacro:if value="$(arg use_sim)">
+    <link name="world"/>
+    <joint name="$(arg prefix)world_fixed" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <parent link="world"/>
+      <child link="$(arg prefix)base_link"/>
+    </joint>
+  </xacro:if>
+
+</robot>

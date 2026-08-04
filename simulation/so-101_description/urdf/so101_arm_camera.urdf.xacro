@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<!--
+SO-101 原机械臂的带末端相机副本。
+原始 so101_arm.urdf.xacro 与 so101_arm_macro.urdf.xacro 保持不变。
+
+用法:
+  仅显示: xacro so101_arm_camera.urdf.xacro
+  虚拟硬件: xacro so101_arm_camera.urdf.xacro use_fake_hardware:=true
+-->
+<robot name="so101_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:arg name="prefix" default=""/>
+  <xacro:arg name="use_sim" default="false"/>
+  <xacro:arg name="use_fake_hardware" default="false"/>
+
+  <xacro:include filename="$(find so-101_description)/urdf/so101_arm_macro.urdf.xacro"/>
+  <xacro:include filename="$(find so-101_description)/urdf/so101_camera_macro.urdf.xacro"/>
+  <xacro:so101_arm prefix="$(arg prefix)"/>
+  <xacro:so101_wrist_camera prefix="$(arg prefix)"/>
+
+  <xacro:if value="$(arg use_fake_hardware)">
+    <ros2_control name="FakeSystem" type="system">
+      <hardware>
+        <plugin>fake_components/GenericSystem</plugin>
+      </hardware>
+      <joint name="$(arg prefix)J1_Rotation">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="$(arg prefix)J2_Shoulder_Pitch">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="$(arg prefix)J3_Elbow_Pitch">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="$(arg prefix)J4_Wrist_Pitch">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+      <joint name="$(arg prefix)J5_Wrist_Roll">
+        <command_interface name="position"/>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+      </joint>
+    </ros2_control>
+  </xacro:if>
+
+  <xacro:if value="$(arg use_sim)">
+    <link name="world"/>
+    <joint name="$(arg prefix)world_fixed" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <parent link="world"/>
+      <child link="$(arg prefix)base_link"/>
+    </joint>
+  </xacro:if>
+
+</robot>

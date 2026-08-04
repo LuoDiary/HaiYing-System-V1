@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- MoveItConfigsBuilder 使用的带末端相机 robot_description。 -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="so101_arm">
+  <xacro:arg name="prefix" default=""/>
+
+  <xacro:include filename="$(find so-101_description)/urdf/so101_arm_macro.urdf.xacro"/>
+  <xacro:include filename="$(find so-101_description)/urdf/so101_camera_macro.urdf.xacro"/>
+  <xacro:so101_arm prefix="$(arg prefix)"/>
+  <xacro:so101_wrist_camera prefix="$(arg prefix)"/>
+</robot>
