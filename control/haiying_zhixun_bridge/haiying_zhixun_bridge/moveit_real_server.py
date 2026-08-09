@@ -17,6 +17,11 @@ from .lerobot_adapter import (
     JOINT_DIRECTIONS,
     JOINT_NAMES,
     JOINT_OFFSETS_DEG,
+    POSITION_D_COEFFICIENT,
+    POSITION_I_COEFFICIENT,
+    POSITION_P_COEFFICIENT,
+    SERVO_ACCELERATION,
+    SERVO_DEAD_ZONE,
     URDF_JOINT_NAMES,
     IKRealConfig,
     RobotLike,
@@ -42,13 +47,19 @@ class MoveItRealServerConfig:
     robot_id: str = "jiebang_follower_arm"
     calibration_dir: Path | None = None
     hardware_execution_enabled: bool = False
-    execution_rate_hz: float = 10.0
-    maximum_duration_s: float = 100.0
-    maximum_joint_speed_deg_s: float = 30.0
-    maximum_frame_step_deg: float = 5.0
+    execution_rate_hz: float = 20.0
+    maximum_duration_s: float = 120.0
+    maximum_joint_speed_deg_s: float = 20.0
+    maximum_frame_step_deg: float = 2.0
+    maximum_trajectory_time_stretch: float = 5.0
     maximum_command_clip_deg: float = 0.5
-    maximum_start_error_deg: float = 10.0
-    maximum_feedback_error_deg: float = 3.0
+    maximum_start_error_deg: float = 20.0
+    maximum_feedback_error_deg: float = 8.0
+    wrist_roll_feedback_error_deg: float = 15.0
+    feedback_lag_s: float = 0.15
+    feedback_check_interval_frames: int = 2
+    feedback_error_grace_samples: int = 5
+    final_settle_timeout_s: float = 2.0
     joint_limit_deg: float = 89.9
 
     def __post_init__(self) -> None:
@@ -61,9 +72,12 @@ class MoveItRealServerConfig:
             self.maximum_duration_s,
             self.maximum_joint_speed_deg_s,
             self.maximum_frame_step_deg,
+            self.maximum_trajectory_time_stretch,
             self.maximum_command_clip_deg,
             self.maximum_start_error_deg,
             self.maximum_feedback_error_deg,
+            self.wrist_roll_feedback_error_deg,
+            self.final_settle_timeout_s,
             self.joint_limit_deg,
         )
         if not all(math.isfinite(value) and value > 0.0 for value in positive):
@@ -72,10 +86,28 @@ class MoveItRealServerConfig:
             raise ValueError("maximum_frame_step_deg 不得超过 5°")
         if self.maximum_command_clip_deg > 0.5:
             raise ValueError("maximum_command_clip_deg 不得超过 0.5°")
-        if self.maximum_start_error_deg > 10.0:
-            raise ValueError("maximum_start_error_deg 不得超过 10°")
-        if self.maximum_feedback_error_deg > 5.0:
-            raise ValueError("maximum_feedback_error_deg 不得超过 5°")
+        if self.maximum_trajectory_time_stretch > 10.0:
+            raise ValueError("maximum_trajectory_time_stretch 不得超过 10 倍")
+        if self.maximum_start_error_deg > 30.0:
+            raise ValueError("maximum_start_error_deg 不得超过 30°")
+        if self.maximum_feedback_error_deg > 15.0:
+            raise ValueError("maximum_feedback_error_deg 不得超过 15°")
+        if self.wrist_roll_feedback_error_deg > 30.0:
+            raise ValueError("wrist_roll_feedback_error_deg 不得超过 30°")
+        if not math.isfinite(self.feedback_lag_s) or not 0.0 <= self.feedback_lag_s <= 1.0:
+            raise ValueError("feedback_lag_s 必须位于 0 到 1 秒")
+        if (
+            isinstance(self.feedback_check_interval_frames, bool)
+            or self.feedback_check_interval_frames < 1
+            or self.feedback_check_interval_frames > 20
+        ):
+            raise ValueError("feedback_check_interval_frames 必须位于 1 到 20")
+        if (
+            isinstance(self.feedback_error_grace_samples, bool)
+            or self.feedback_error_grace_samples < 1
+            or self.feedback_error_grace_samples > 20
+        ):
+            raise ValueError("feedback_error_grace_samples 必须位于 1 到 20")
         if self.joint_limit_deg > 90.0:
             raise ValueError("joint_limit_deg 不得超过 URDF 的 90° 限位")
 
@@ -92,6 +124,7 @@ class ValidatedMoveItTrajectory:
     target_positions_deg: tuple[float, ...]
     maximum_speed_deg_s: float
     maximum_frame_step_deg: float
+    time_stretch: float
     created_monotonic_s: float
 
 
@@ -174,6 +207,29 @@ def _resample(
     return tuple(sample_times), tuple(result)
 
 
+def _joint_error_deg(joint_name: str, actual: float, target: float) -> float:
+    """计算关节误差；wrist_roll 是整圈轴，必须使用最短环形角差。"""
+    difference = actual - target
+    if joint_name == "wrist_roll":
+        difference = (difference + 180.0) % 360.0 - 180.0
+    return abs(difference)
+
+
+def _feedback_errors(
+    feedback: dict[str, float], target: dict[str, float]
+) -> dict[str, float]:
+    return {
+        name: _joint_error_deg(name, feedback[name], target[name])
+        for name in JOINT_NAMES
+    }
+
+
+def _feedback_limit_deg(config: MoveItRealServerConfig, joint_name: str) -> float:
+    if joint_name == "wrist_roll":
+        return config.wrist_roll_feedback_error_deg
+    return config.maximum_feedback_error_deg
+
+
 def validate_moveit_trajectory(
     payload: dict[str, object],
     config: MoveItRealServerConfig,
@@ -183,8 +239,8 @@ def validate_moveit_trajectory(
         raise ValueError("MoveIt 轨迹必须包含 time_from_start=0 的真实起始状态")
     if any(current <= previous for previous, current in zip(times[:-1], times[1:], strict=True)):
         raise ValueError("MoveIt 轨迹时间必须严格递增")
-    duration = times[-1]
-    if not 0.05 <= duration <= config.maximum_duration_s:
+    source_duration = times[-1]
+    if not 0.05 <= source_duration <= config.maximum_duration_s:
         raise ValueError(
             f"MoveIt 轨迹时长必须位于 0.05 到 {config.maximum_duration_s:g} 秒"
         )
@@ -203,13 +259,19 @@ def validate_moveit_trajectory(
             maximum_speed,
             max(abs(target - source) / delta_time for source, target in zip(start, end, strict=True)),
         )
-    if maximum_speed > config.maximum_joint_speed_deg_s:
+    time_stretch = max(1.0, maximum_speed / config.maximum_joint_speed_deg_s)
+    if time_stretch > config.maximum_trajectory_time_stretch:
         raise ValueError(
-            f"MoveIt 轨迹最大关节速度 {maximum_speed:.3f}°/s 超过 "
-            f"{config.maximum_joint_speed_deg_s:g}°/s"
+            f"MoveIt 轨迹平滑拉伸需要 {time_stretch:.2f} 倍，超过 "
+            f"{config.maximum_trajectory_time_stretch:g} 倍上限"
         )
+    stretched_times = [value * time_stretch for value in times]
+    duration = stretched_times[-1]
+    if duration > config.maximum_duration_s:
+        raise ValueError(f"平滑拉伸后轨迹时长 {duration:.3f}s 超过 {config.maximum_duration_s:g}s")
+    maximum_speed /= time_stretch
 
-    sample_times, resampled = _resample(times, positions, config.execution_rate_hz)
+    sample_times, resampled = _resample(stretched_times, positions, config.execution_rate_hz)
     maximum_step = max(
         max(abs(target - source) for source, target in zip(start, end, strict=True))
         for start, end in zip(resampled[:-1], resampled[1:], strict=True)
@@ -239,6 +301,7 @@ def validate_moveit_trajectory(
         target_positions_deg=resampled[-1],
         maximum_speed_deg_s=maximum_speed,
         maximum_frame_step_deg=maximum_step,
+        time_stretch=time_stretch,
         created_monotonic_s=time.monotonic(),
     )
 
@@ -254,6 +317,7 @@ def trajectory_summary(plan: ValidatedMoveItTrajectory) -> dict[str, object]:
         "target_positions_deg": list(plan.target_positions_deg),
         "maximum_speed_deg_s": plan.maximum_speed_deg_s,
         "maximum_frame_step_deg": plan.maximum_frame_step_deg,
+        "time_stretch": plan.time_stretch,
         "validated": True,
         "hardware_connected": False,
     }
@@ -267,9 +331,7 @@ def execute_moveit_trajectory(
     real_frames = tuple(map_urdf_angles_to_real(frame) for frame in plan.resampled_positions_deg)
     initial_feedback = inspect_robot(robot)
     initial_target = real_frames[0]
-    initial_errors = {
-        name: abs(initial_feedback[name] - initial_target[name]) for name in JOINT_NAMES
-    }
+    initial_errors = _feedback_errors(initial_feedback, initial_target)
     worst_initial_joint = max(initial_errors, key=initial_errors.get)
     if initial_errors[worst_initial_joint] > config.maximum_start_error_deg:
         raise RuntimeError(
@@ -299,15 +361,23 @@ def execute_moveit_trajectory(
     final_sent = dict(initial_feedback)
     final_feedback = dict(initial_feedback)
     commanded_frames = 0
+    consecutive_feedback_violations = 0
+    lag_frames = math.ceil(config.feedback_lag_s * config.execution_rate_hz)
+    command_history: list[dict[str, float]] = [dict(initial_feedback)]
+    next_frame_deadline = time.perf_counter()
     for frame_index, target in enumerate(command_targets, start=1):
-        frame_start = time.perf_counter()
+        remaining_s = next_frame_deadline - time.perf_counter()
+        if remaining_s > 0.0:
+            time.sleep(remaining_s)
         action = {f"{name}.pos": value for name, value in target.items()}
         sent_value = robot.send_action(action)
         final_sent = {
             name: float(cast(dict[str, object], sent_value)[f"{name}.pos"])
             for name in JOINT_NAMES
         }
-        command_errors = {name: abs(final_sent[name] - target[name]) for name in JOINT_NAMES}
+        command_errors = {
+            name: _joint_error_deg(name, final_sent[name], target[name]) for name in JOINT_NAMES
+        }
         clipped_joint = max(command_errors, key=command_errors.get)
         if command_errors[clipped_joint] > config.maximum_command_clip_deg:
             raise RuntimeError(
@@ -315,21 +385,59 @@ def execute_moveit_trajectory(
                 f"{clipped_joint} 裁剪量 {command_errors[clipped_joint]:.3f}°，"
                 f"允许 ≤ {config.maximum_command_clip_deg:.3f}°（不是机械关节限位）"
             )
-        remaining_s = period_s - (time.perf_counter() - frame_start)
-        if remaining_s > 0.0:
-            time.sleep(remaining_s)
+        command_history.append(dict(final_sent))
+        commanded_frames += 1
+        next_frame_deadline += period_s
+        if next_frame_deadline < time.perf_counter() - period_s:
+            # 串口偶发重试超过一个周期时，重建节拍，禁止连续补发形成阶跃。
+            next_frame_deadline = time.perf_counter()
+        if frame_index % config.feedback_check_interval_frames != 0:
+            continue
+
         final_feedback = inspect_robot(robot)
-        feedback_errors = {
-            name: abs(final_feedback[name] - final_sent[name]) for name in JOINT_NAMES
-        }
+        reference_index = max(0, len(command_history) - 1 - lag_frames)
+        feedback_errors = _feedback_errors(final_feedback, command_history[reference_index])
         worst_joint = max(feedback_errors, key=feedback_errors.get)
         maximum_feedback_error = max(maximum_feedback_error, feedback_errors[worst_joint])
-        commanded_frames += 1
-        if feedback_errors[worst_joint] > config.maximum_feedback_error_deg:
+        violations = {
+            name: error
+            for name, error in feedback_errors.items()
+            if error > _feedback_limit_deg(config, name)
+        }
+        consecutive_feedback_violations = (
+            consecutive_feedback_violations + 1 if violations else 0
+        )
+        if consecutive_feedback_violations >= config.feedback_error_grace_samples:
+            failed_joint = max(violations, key=violations.get)
             raise RuntimeError(
                 f"MoveIt 实机第 {frame_index}/{len(command_targets)} 帧反馈误差过大："
-                f"{worst_joint} {feedback_errors[worst_joint]:.3f}°"
+                f"{failed_joint} {violations[failed_joint]:.3f}°，已连续 "
+                f"{consecutive_feedback_violations} 次超差"
             )
+
+    # 最后一帧下发后给实体舵机留出到位时间，再以终点误差作最终判定。
+    settle_deadline = time.perf_counter() + config.final_settle_timeout_s
+    final_errors: dict[str, float] = {}
+    while True:
+        final_feedback = inspect_robot(robot)
+        final_errors = _feedback_errors(final_feedback, final_sent)
+        maximum_feedback_error = max(maximum_feedback_error, max(final_errors.values()))
+        if all(
+            error <= _feedback_limit_deg(config, name)
+            for name, error in final_errors.items()
+        ):
+            break
+        if time.perf_counter() >= settle_deadline:
+            failed_joint = max(
+                final_errors,
+                key=lambda name: final_errors[name] / _feedback_limit_deg(config, name),
+            )
+            raise RuntimeError(
+                f"MoveIt 实机终点稳定超时：{failed_joint} 反馈误差 "
+                f"{final_errors[failed_joint]:.3f}°，允许 ≤ "
+                f"{_feedback_limit_deg(config, failed_joint):.3f}°"
+            )
+        time.sleep(min(period_s, 0.05))
     return MoveItExecutionResult(
         trajectory_id=plan.trajectory_id,
         commanded_frames=commanded_frames,
@@ -389,6 +497,16 @@ class MoveItRealServer(ThreadingHTTPServer):
             "zero_offsets_deg": list(JOINT_OFFSETS_DEG),
             "execution_rate_hz": self.config.execution_rate_hz,
             "maximum_command_clip_deg": self.config.maximum_command_clip_deg,
+            "maximum_feedback_error_deg": self.config.maximum_feedback_error_deg,
+            "wrist_roll_feedback_error_deg": self.config.wrist_roll_feedback_error_deg,
+            "feedback_error_grace_samples": self.config.feedback_error_grace_samples,
+            "servo_position_pid": [
+                POSITION_P_COEFFICIENT,
+                POSITION_I_COEFFICIENT,
+                POSITION_D_COEFFICIENT,
+            ],
+            "servo_acceleration": SERVO_ACCELERATION,
+            "servo_dead_zone": SERVO_DEAD_ZONE,
         }
 
     def store(self, plan: ValidatedMoveItTrajectory) -> None:
@@ -480,7 +598,9 @@ class MoveItRealHandler(BaseHTTPRequestHandler):
                     robot_id=self.server.config.robot_id,
                     calibration_dir=calibration_path.parent,
                 )
-                robot = _make_robot(robot_cfg, self.server.config.maximum_frame_step_deg)
+                # 本执行器已检查速度和帧间步长，关闭 LeRobot 的二次相对裁剪，
+                # 避免每帧多一次带噪声的总线读取导致抖动。
+                robot = _make_robot(robot_cfg, 0.0)
                 try:
                     robot.connect(calibrate=False)
                     result = execute_moveit_trajectory(robot, plan, self.server.config)

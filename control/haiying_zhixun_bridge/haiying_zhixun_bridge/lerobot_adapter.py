@@ -34,12 +34,20 @@ URDF_JOINT_NAMES: tuple[str, ...] = (
 # 现场装配映射。修改后必须同步 config/arm_bridge.yaml，并重新执行小角度验收。
 JOINT_DIRECTIONS: tuple[float, ...] = (1.0, 1.0, -1.0, 1.0, 1.0)
 JOINT_OFFSETS_DEG: tuple[float, ...] = (
-    -5.406593406593407,
-    12.615384615384615,
-    0.13186813186813187,
-    19.428571428571427,
-    17.45054945054945,
+    -6.417582417582418,
+    -0.7472527472527473,
+    -0.5274725274725275,
+    16.967032967032967,
+    -6.197802197802198,
 )
+
+# Feetech STS3215 实机稳定参数。显式放在项目适配层，避免依赖某台机器上的
+# LeRobot 默认值；连接时由 SOFollower.configure 写入五个舵机。
+POSITION_P_COEFFICIENT = 24
+POSITION_I_COEFFICIENT = 0
+POSITION_D_COEFFICIENT = 32
+SERVO_ACCELERATION = 100
+SERVO_DEAD_ZONE = 5
 
 
 class RobotLike(Protocol):
@@ -97,6 +105,11 @@ def _make_robot(config: IKRealConfig, max_relative_target_deg: float) -> RobotLi
         calibration_dir=calibration_path.parent,
         max_relative_target=max_relative_target_deg,
         use_degrees=True,
+        position_p_coefficient=POSITION_P_COEFFICIENT,
+        position_i_coefficient=POSITION_I_COEFFICIENT,
+        position_d_coefficient=POSITION_D_COEFFICIENT,
+        acceleration=SERVO_ACCELERATION,
+        dead_zone=SERVO_DEAD_ZONE,
     )
     return SO101Follower5DOF(robot_config)
 

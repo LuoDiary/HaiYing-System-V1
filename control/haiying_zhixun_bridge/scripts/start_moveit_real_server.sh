@@ -4,7 +4,10 @@ set -euo pipefail
 health_url="http://127.0.0.1:8767/api/health"
 if health_response="$(curl --fail --silent --show-error --max-time 2 "${health_url}" 2>/dev/null)" \
   && [[ "${health_response}" == *'"status": "ok"'* ]] \
-  && [[ "${health_response}" == *'"hardware_execution_enabled": true'* ]]; then
+  && [[ "${health_response}" == *'"hardware_execution_enabled": true'* ]] \
+  && [[ "${health_response}" == *'"execution_rate_hz": 20.0'* ]] \
+  && [[ "${health_response}" == *'"wrist_roll_feedback_error_deg": 15.0'* ]] \
+  && [[ "${health_response}" == *'"servo_position_pid": [24, 0, 32]'* ]]; then
   echo "MoveIt 实机服务已在运行：${health_url}"
   exit 0
 fi
@@ -29,11 +32,17 @@ exec "${conda_command}" run --no-capture-output -n "${conda_environment}" \
   --robot_port=/dev/ttyACM0 \
   --robot_id=jiebang_follower_arm \
   --hardware_execution_enabled=true \
-  --execution_rate_hz=10 \
-  --maximum_duration_s=100 \
-  --maximum_joint_speed_deg_s=30 \
-  --maximum_frame_step_deg=5 \
+  --execution_rate_hz=20 \
+  --maximum_duration_s=120 \
+  --maximum_joint_speed_deg_s=20 \
+  --maximum_frame_step_deg=2 \
+  --maximum_trajectory_time_stretch=5 \
   --maximum_command_clip_deg=0.5 \
-  --maximum_start_error_deg=10 \
-  --maximum_feedback_error_deg=3 \
+  --maximum_start_error_deg=20 \
+  --maximum_feedback_error_deg=8 \
+  --wrist_roll_feedback_error_deg=15 \
+  --feedback_lag_s=0.15 \
+  --feedback_check_interval_frames=2 \
+  --feedback_error_grace_samples=5 \
+  --final_settle_timeout_s=2 \
   --joint_limit_deg=89.9

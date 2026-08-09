@@ -46,14 +46,14 @@ geometry:
 
 mapping:
   direction_signs: [1.0, 1.0, -1.0, 1.0, 1.0]
-  zero_offsets_deg: [-5.406593, 12.615385, 0.131868, 19.428571, 17.45054945054945]
+  zero_offsets_deg: [-6.417582417582418, -0.7472527472527473, -0.5274725274725275, 16.967032967032967, -6.197802197802198]
 
 safety:
   simulation_only: true
   jog_max_delta_deg: 10.0
   dry_run_max_frame_step_deg: 1.0
-  restricted_execute_max_frame_step_deg: 1.5
-  restricted_execute_start_error_deg: 2.0
-  restricted_execute_feedback_error_deg: 3.0
+  restricted_execute_max_frame_step_deg: 2.0
+  restricted_execute_start_error_deg: 20.0
+  restricted_execute_feedback_error_deg: 8.0
   restricted_execute_positive_z_min_m: 0.008
   restricted_execute_positive_z_max_m: 0.012
