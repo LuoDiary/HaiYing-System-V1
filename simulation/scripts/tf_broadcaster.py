@@ -21,9 +21,9 @@ class TFBroadcaster(Node):
         camera_tf.header.stamp = self.get_clock().now().to_msg()
         camera_tf.header.frame_id = 'base_link'
         camera_tf.child_frame_id = 'camera_link'
-        camera_tf.transform.translation.x = 0.15   # 无人机前方 15cm（待确认）
-        camera_tf.transform.translation.y = 0.0    # 居中（待确认）
-        camera_tf.transform.translation.z = -0.05  # 无人机下方 5cm（待确认）
+        camera_tf.transform.translation.x = 0.15   # 无人机前方 15cm（确认）
+        camera_tf.transform.translation.y = 0.0    # 居中（确认）
+        camera_tf.transform.translation.z = -0.08  # 无人机下方 8cm（确认）
         camera_tf.transform.rotation.w = 1.0       # 无旋转
         self.static_broadcaster.sendTransform(camera_tf)
 
@@ -37,7 +37,7 @@ class TFBroadcaster(Node):
         arm_tf.child_frame_id = 'arm_base_link'
         arm_tf.transform.translation.x = 0.0
         arm_tf.transform.translation.y = 0.0
-        arm_tf.transform.translation.z = -0.1   # 无人机下方 10cm（待确认）
+        arm_tf.transform.translation.z = -0.045   # 无人机下方 4.5cm（确认）
         arm_tf.transform.rotation.w = 1.0
         self.static_broadcaster.sendTransform(arm_tf)
 
