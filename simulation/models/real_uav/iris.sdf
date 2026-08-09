@@ -563,6 +563,42 @@
         </channel>
       </control_channels>
     </plugin>
+     <link name='camera_link'>
+      <pose>0.15 0 -0.08 0 0 0</pose>
+      <inertial>
+        <mass>0.01</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <iyy>0.0001</iyy>
+          <izz>0.0001</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <plugin name='depth_camera_plugin' filename='libgazebo_ros_camera.so'>
+      <robotNamespace/>
+      <cameraName>camera</cameraName>
+      <camera>
+        <horizontal_fov>1.047</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.1</near>
+          <far>100</far>
+        </clip>
+      </camera>
+      <alwaysOn>true</alwaysOn>
+      <updateRate>20.0</updateRate>
+      <rgb_topic_name>/camera/rgb/image_raw</rgb_topic_name>
+      <depth_topic_name>/camera/depth/image_raw</depth_topic_name>
+      <camera_info_topic_name>/camera/camera_info</camera_info_topic_name>
+    </plugin>
     <static>0</static>
     <plugin name='rotors_gazebo_imu_plugin' filename='libgazebo_imu_plugin.so'>
       <robotNamespace/>
