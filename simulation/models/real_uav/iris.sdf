@@ -1,6 +1,6 @@
 <!-- DO NOT EDIT: Generated from iris.sdf.jinja -->
 <sdf version='1.6'>
-  <model name='iris'>
+  <model name='real_uav'>
     <link name='base_link'>
       <pose>0 0 0 0 0 0</pose>
       <inertial>
@@ -564,7 +564,7 @@
       </control_channels>
     </plugin>
      <link name='camera_link'>
-      <pose>0.15 0 -0.08 0 0 0</pose>
+      <pose>0 0 0 0 0 0</pose>
       <inertial>
         <mass>0.01</mass>
         <inertia>
@@ -580,7 +580,7 @@
 
     <plugin name='depth_camera_plugin' filename='libgazebo_ros_camera.so'>
       <robotNamespace/>
-      <cameraName>camera</cameraName>
+      <cameraName>drone/camera</cameraName>
       <camera>
         <horizontal_fov>1.047</horizontal_fov>
         <image>
@@ -596,9 +596,14 @@
       <alwaysOn>true</alwaysOn>
       <updateRate>20.0</updateRate>
       <rgb_topic_name>/camera/rgb/image_raw</rgb_topic_name>
-      <depth_topic_name>/camera/depth/image_raw</depth_topic_name>
-      <camera_info_topic_name>/camera/camera_info</camera_info_topic_name>
+      <depth_topic_name>/drone/camera/depth_raw</depth_topic_name>
+      <camera_info_topic_name>/drone/camera/depth_info</camera_info_topic_name>
     </plugin>
+    <joint name='camera_joint' type='fixed'>
+      <parent>base_link</parent>
+      <child>camera_link</child>
+      <pose>0.15 0 -0.08 0 0 0</pose>
+    </joint>
     <static>0</static>
     <plugin name='rotors_gazebo_imu_plugin' filename='libgazebo_imu_plugin.so'>
       <robotNamespace/>
