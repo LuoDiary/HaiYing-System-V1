@@ -9,6 +9,7 @@
 | `yolo_detector.py` | Task 26, 71 | YOLOv5 GPU推理 → `/vision/detection` |
 | `target_localizer.py` | Task 27, 72 | 像素→深度→TF→世界坐标 → `/vision/target_point` |
 | `calibration.py` | Task 29 | 相机-LiDAR外参标定TF |
+| `approach_controller.py` | 动作3 | 状态机: SEARCHING→APPROACHING→BRUSHING→HOVERING |
 | `gz_camera_bridge.py` | 辅助 | Gazebo RGB相机 → ROS2 |
 | `gz_depth_bridge.py` | 辅助 | Gazebo 深度相机 → ROS2 (32FC1) |
 | `tf_publisher.py` | 辅助 | world→base_link→camera_frame TF发布 |
@@ -36,7 +37,10 @@ python3 calibration.py &
 | 话题 | 类型 | 方向 |
 |------|------|------|
 | `/vision/detection` | DefectDetectionArray | 发布：YOLO检测结果 |
-| `/vision/target_point` | PointStamped | 发布：目标绝对XYZ坐标 |
+| `/vision/target_point` | PointStamped | 发布：目标绝对XYZ坐标 (world) |
+| `/arm/target_pose` | PoseStamped | 发布：机械臂目标位姿 (arm_base + 刷子姿态) |
+| `/uav/cmd_vel` | Twist | 发布：无人机速度指令 (接近/悬停) |
+| `/system/current_state` | String | 发布：系统状态 (SEARCHING/APPROACHING/BRUSHING/HOVERING) |
 
 ## 依赖
 
