@@ -15,13 +15,13 @@ class TfPublisher(Node):
         super().__init__('tf_publisher')
 
         # 静态变换: drone_base_link → camera_frame
-        # x500_depth: camera at (0.12, 0.03, 0.242) relative to base_link
+        # 相机: base_link前方15cm, 居中, 下方8cm
         self.camera_tf = TransformStamped()
         self.camera_tf.header.frame_id = 'drone_base_link'
         self.camera_tf.child_frame_id = 'camera_frame'
-        self.camera_tf.transform.translation.x = 0.12
-        self.camera_tf.transform.translation.y = 0.03
-        self.camera_tf.transform.translation.z = 0.242
+        self.camera_tf.transform.translation.x = 0.15
+        self.camera_tf.transform.translation.y = 0.0
+        self.camera_tf.transform.translation.z = -0.08
         self.camera_tf.transform.rotation.w = 1.0  # camera faces +X
 
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
