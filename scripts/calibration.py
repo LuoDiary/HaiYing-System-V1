@@ -41,10 +41,10 @@ class CalibrationNode(Node):
         self.declare_parameter('lidar_frame', 'lidar_frame')
 
         # --- 标定数据 ---
-        # OakD-Lite: 相机中心在base_link前方(0.12, 0.03, 0.242)
+        # 相机: base_link前方15cm, 居中, 下方8cm
         # LiDAR: 假设安装在base_link顶部(0, 0, 0.3)
         self.camera_in_base = {
-            'translation': [0.12, 0.03, 0.242],
+            'translation': [0.15, 0.0, -0.08],
             'rotation': [0.0, 0.0, 0.0, 1.0]  # 相机面向前方(+X)
         }
         self.lidar_in_base = {
