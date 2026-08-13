@@ -12,6 +12,7 @@
 
   <exec_depend>pymavlink</exec_depend>
   <exec_depend>pyserial</exec_depend>
+  <exec_depend>python3-matplotlib</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>

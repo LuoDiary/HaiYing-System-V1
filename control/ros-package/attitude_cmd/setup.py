@@ -20,6 +20,9 @@ setup(
         'console_scripts': [
             'attitude_cmd_node = attitude_cmd.mavlink_link_node:main',
             'hover_demo_node = attitude_cmd.hover_demo_node:main',
+            'plot_vibration = attitude_cmd.plot_vibration:main',
+            'plot_hover_drift = attitude_cmd.plot_hover_drift:main',
+            'fake_px4 = attitude_cmd.fake_px4:main',
         ],
     },
 )
