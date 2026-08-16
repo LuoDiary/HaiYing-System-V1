@@ -152,6 +152,15 @@ Visualization Manager:
         Show Robot Visual: true
       Value: true
       Velocity_Scaling_Factor: 0.1
+    - Alpha: 1
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Marker Topic: /cartesian_path_marker
+      Name: CartesianBrushPath
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
