@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 
+import csv
+import math
+import os
 import threading
 import time
+from pathlib import Path
+
+os.environ.setdefault('MAVLINK20', '1')
+os.environ.setdefault('MAVLINK_DIALECT', 'common')
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from std_msgs.msg import Float32MultiArray, String
-from geometry_msgs.msg import Quaternion
+from std_msgs.msg import Float32, Float32MultiArray, Header, String
+from geometry_msgs.msg import Point, PointStamped, Quaternion
 from std_srvs.srv import SetBool
 
 from pymavlink import mavutil
@@ -37,6 +45,7 @@ class AttitudeCmdNode(Node):
         self.declare_parameter('target_system', 1)
         self.declare_parameter('target_component', 1)
         self.declare_parameter('rate', 50)
+        self.declare_parameter('data_dir', str(Path.home() / '.px4_viz'))
 
         port = self.get_parameter('port').value
         baud = self.get_parameter('baud').value
@@ -57,6 +66,17 @@ class AttitudeCmdNode(Node):
         self._mode = 'unknown'
         self._running = True
 
+        data_dir = Path(self.get_parameter('data_dir').value)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        self._vib_fh = open(data_dir / 'vibration.csv', 'w', newline='')
+        self._vib_writer = csv.writer(self._vib_fh)
+        self._vib_writer.writerow(
+            ['t', 'time_usec', 'vib_x', 'vib_y', 'vib_z', 'clip_0', 'clip_1', 'clip_2'])
+        self._pos_fh = open(data_dir / 'position.csv', 'w', newline='')
+        self._pos_writer = csv.writer(self._pos_fh)
+        self._pos_writer.writerow(['t', 'time_boot_ms', 'x_ned', 'y_ned', 'z_ned'])
+        self.get_logger().info(f'logging telemetry to {data_dir}')
+
         self._sp_sub = self.create_subscription(
             Float32MultiArray, 'attitude_setpoint', self._on_setpoint, 1)
         self._arm_srv = self.create_service(
@@ -66,6 +86,9 @@ class AttitudeCmdNode(Node):
 
         self._att_pub = self.create_publisher(Quaternion, 'vehicle_attitude', 1)
         self._state_pub = self.create_publisher(String, 'vehicle_state', 1)
+        self._vib_pub = self.create_publisher(Float32MultiArray, 'vibration', 1)
+        self._pos_pub = self.create_publisher(PointStamped, 'vehicle_local_position', 1)
+        self._drift_pub = self.create_publisher(Float32, 'hover_drift', 1)
 
         self._setpoint_timer = self.create_timer(1.0 / self._rate, self._send_setpoint)
         self._hb_timer = self.create_timer(0.5, self._send_heartbeat)
@@ -144,6 +167,29 @@ class AttitudeCmdNode(Node):
                 self._att_pub.publish(Quaternion(
                     x=float(msg.q2), y=float(msg.q3),
                     z=float(msg.q4), w=float(msg.q1)))
+            elif mtype == 'VIBRATION':
+                vib = [
+                    float(msg.vibration_x),
+                    float(msg.vibration_y),
+                    float(msg.vibration_z),
+                    float(msg.clipping_0),
+                    float(msg.clipping_1),
+                    float(msg.clipping_2),
+                ]
+                self._vib_pub.publish(Float32MultiArray(data=vib))
+                self._vib_writer.writerow([time.time(), msg.time_usec] + vib)
+                self._vib_fh.flush()
+            elif mtype == 'LOCAL_POSITION_NED':
+                stamp = self.get_clock().now().to_msg()
+                point = Point(x=float(msg.x), y=float(msg.y), z=float(msg.z))
+                self._pos_pub.publish(PointStamped(
+                    header=Header(stamp=stamp, frame_id='local_origin_ned'),
+                    point=point))
+                drift = math.hypot(float(msg.x), float(msg.y))
+                self._drift_pub.publish(Float32(data=drift))
+                self._pos_writer.writerow([time.time(), msg.time_boot_ms,
+                                           float(msg.x), float(msg.y), float(msg.z)])
+                self._pos_fh.flush()
             elif mtype == 'COMMAND_ACK':
                 self.get_logger().info(
                     f'COMMAND_ACK cmd={msg.command} result={msg.result}')
@@ -151,6 +197,8 @@ class AttitudeCmdNode(Node):
     def destroy_node(self):
         self._running = False
         self._mav.close()
+        self._vib_fh.close()
+        self._pos_fh.close()
         super().destroy_node()
 
 
@@ -159,11 +207,12 @@ def main(args=None):
     node = AttitudeCmdNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':
