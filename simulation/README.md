@@ -8,12 +8,13 @@
 |---|---|
 | `arm/` | 轻量、自包含的 SO-101 五自由度 URDF；供 IK 服务、TF 和模型交付使用 |
 | `so-101_description/` | Gazebo Classic、MoveIt 2、ros2_control、腕部相机和风机场景联调包 |
+| `arm_uav_joint/` | 以 `custom_quad_333.sdf` 为源的四旋翼 + SO-101 联合仿真包，支持 PX4/MAVROS |
 
-两个包均可由工作空间根目录直接构建：
+上述功能包均可由工作空间根目录直接构建：
 
 ```bash
 source /opt/ros/humble/setup.bash
-colcon build --base-paths simulation --packages-select arm so-101_description --symlink-install
+colcon build --base-paths simulation --packages-select arm so-101_description arm_uav_joint --symlink-install
 source install/setup.bash
 ```
 
@@ -28,6 +29,14 @@ ros2 launch arm display.launch.py
 ```bash
 ros2 launch so-101_description gazebo_moveit.launch.py
 ```
+
+启动四旋翼与机械臂联合模型（默认静态展示，不启动 PX4）：
+
+```bash
+ros2 launch arm_uav_joint arm_uav_joint.launch.py
+```
+
+启用 PX4 SITL 时，参见 [`arm_uav_joint/README.md`](arm_uav_joint/README.md)。
 
 无图形冒烟测试：
 
