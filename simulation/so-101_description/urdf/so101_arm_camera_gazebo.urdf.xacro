@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+<!-- SO-101 带末端相机的 Gazebo Classic 包装层。原 Gazebo Xacro 保持不变。 -->
+<robot name="so101_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="prefix" default=""/>
+
+  <xacro:include filename="$(find so-101_description)/urdf/so101_arm_macro.urdf.xacro"/>
+  <xacro:include filename="$(find so-101_description)/urdf/so101_camera_macro.urdf.xacro"/>
+  <xacro:so101_arm prefix="$(arg prefix)"/>
+  <xacro:so101_wrist_camera prefix="$(arg prefix)"/>
+
+  <ros2_control name="GazeboSystem" type="system">
+    <hardware>
+      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+    </hardware>
+    <joint name="$(arg prefix)J1_Rotation"><command_interface name="position"/><state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/></joint>
+    <joint name="$(arg prefix)J2_Shoulder_Pitch"><command_interface name="position"/><state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/></joint>
+    <joint name="$(arg prefix)J3_Elbow_Pitch"><command_interface name="position"/><state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/></joint>
+    <joint name="$(arg prefix)J4_Wrist_Pitch"><command_interface name="position"/><state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/></joint>
+    <joint name="$(arg prefix)J5_Wrist_Roll"><command_interface name="position"/><state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/></joint>
+  </ros2_control>
+
+  <gazebo>
+    <joint name="gazebo_world_to_base" type="fixed">
+      <parent>world</parent>
+      <child>$(arg prefix)base_footprint</child>
+    </joint>
+  </gazebo>
+
+  <gazebo reference="$(arg prefix)base_footprint"><gravity>false</gravity></gazebo>
+  <gazebo reference="$(arg prefix)J1_Rotation"><provideFeedback>true</provideFeedback></gazebo>
+  <gazebo reference="$(arg prefix)J2_Shoulder_Pitch"><provideFeedback>true</provideFeedback></gazebo>
+  <gazebo reference="$(arg prefix)J3_Elbow_Pitch"><provideFeedback>true</provideFeedback></gazebo>
+  <gazebo reference="$(arg prefix)J4_Wrist_Pitch"><provideFeedback>true</provideFeedback></gazebo>
+  <gazebo reference="$(arg prefix)J5_Wrist_Roll"><provideFeedback>true</provideFeedback></gazebo>
+
+  <!--
+  保留相机固定关节，避免 Gazebo 将 wrist_camera_link 合并到 gripper_base。
+  否则下面 sensor 的局部 pose 会被忽略，视锥顶点会停在 camera_link 原点。
+  -->
+  <gazebo reference="$(arg prefix)wrist_camera_joint">
+    <preserveFixedJoint>true</preserveFixedJoint>
+  </gazebo>
+
+  <!-- Gazebo Classic RGB 相机；ROS 话题为 /so101/wrist_camera/image_raw。 -->
+  <gazebo reference="$(arg prefix)wrist_camera_link">
+    <sensor name="wrist_camera" type="camera">
+      <!-- 光心位于镜头中心；roll=-0.1407963 将零位画面顺时针校正 8.07°。 -->
+      <pose>-0.012 -0.0093 0 -0.1407963 0 -1.5707963</pose>
+      <always_on>true</always_on>
+      <update_rate>30.0</update_rate>
+      <visualize>true</visualize>
+      <camera name="wrist_camera">
+        <horizontal_fov>1.3962634</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.02</near>
+          <far>20.0</far>
+        </clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.003</stddev>
+        </noise>
+      </camera>
+      <plugin name="wrist_camera_controller" filename="libgazebo_ros_camera.so">
+        <ros>
+          <namespace>/so101</namespace>
+        </ros>
+        <camera_name>wrist_camera</camera_name>
+        <frame_name>$(arg prefix)wrist_camera_optical_frame</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+
+  <gazebo>
+    <plugin name="gazebo_ros2_control" filename="$(find gazebo_ros2_control)/../../lib/libgazebo_ros2_control.so">
+      <robot_param>robot_description</robot_param>
+      <robot_param_node>robot_state_publisher</robot_param_node>
+      <hold_joints>true</hold_joints>
+      <parameters>$(find so-101_description)/config/ros2_controllers.yaml</parameters>
+    </plugin>
+  </gazebo>
+</robot>

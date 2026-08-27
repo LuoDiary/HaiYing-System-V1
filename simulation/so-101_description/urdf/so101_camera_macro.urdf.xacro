@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+SO-101 末端相机组件。
+
+坐标约定：
+  - cam_holder 与 gripper_base 同心安装；
+  - wrist_camera_link 是相机盒体坐标系；
+  - 镜头安装在盒体局部 -Y 大面的中心，并沿 -Y 朝外；
+  - wrist_camera_optical_frame 使用 REP-103 optical 坐标
+    （+Z 朝前、+X 朝右、+Y 朝下）。
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="so101_wrist_camera" params="prefix:=''">
+    <xacro:property
+      name="camera_holder_mesh"
+      value="package://so-101_description/urdf/cam_holder/part_003_surface_shell_003.stl"/>
+
+    <!-- 原始相机支架。源 STL 经此变换后以安装中心为原点，尺寸约 60 x 56 x 39 mm。 -->
+    <link name="${prefix}cam_holder">
+      <inertial>
+        <origin xyz="0.008826136 -0.0073716901 0.00011928665" rpy="0 0 0"/>
+        <mass value="0.02"/>
+        <inertia
+          ixx="6.7854269e-06" iyy="6.2217147e-06" izz="8.8277506e-06"
+          ixy="-3.4346284e-06" ixz="2.0490557e-07" iyz="1.2484235e-07"/>
+      </inertial>
+      <visual>
+        <origin xyz="0.060129397 -0.021552011 0.011971371" rpy="1.5707963 0 0"/>
+        <geometry>
+          <mesh filename="${camera_holder_mesh}" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="camera_holder_black">
+          <color rgba="0.08 0.08 0.09 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.060129397 -0.021552011 0.011971371" rpy="1.5707963 0 0"/>
+        <geometry>
+          <mesh filename="${camera_holder_mesh}" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <!--
+    中间安装坐标系：
+      1. cam_holder_mount_joint 保留当前已经调好的平移与 pitch；
+      2. cam_holder_joint 负责支架相对中间坐标系的局部 Z 轴旋转。
+
+    分成两个 fixed joint 可避免在 pitch 接近 90° 时继续混合 RPY 引起的轴重合。
+    -->
+    <link name="${prefix}cam_holder_mount_frame"/>
+
+    <joint name="${prefix}cam_holder_mount_joint" type="fixed">
+      <parent link="${prefix}gripper_base"/>
+      <child link="${prefix}cam_holder_mount_frame"/>
+      <origin xyz="0.003 -0.045 0.0" rpy="0 1.6 0.0"/>
+    </joint>
+
+    <joint name="${prefix}cam_holder_joint" type="fixed">
+      <parent link="${prefix}cam_holder_mount_frame"/>
+      <child link="${prefix}cam_holder"/>
+      <origin xyz="0.02 -0.0 0" rpy="0 0 1"/>
+    </joint>
+
+    <!-- 恢复已确认正确的相机盒体外观和安装状态。 -->
+    <link name="${prefix}wrist_camera_link">
+      <inertial>
+        <origin xyz="-0.012 0 0" rpy="0 0 0"/>
+        <mass value="0.015"/>
+        <inertia
+          ixx="1.525e-06" iyy="2.000e-06" izz="9.650e-07"
+          ixy="0" ixz="0" iyz="0"/>
+      </inertial>
+      <visual name="camera_body">
+        <origin xyz="-0.012 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.03 0.014 0.03"/>
+        </geometry>
+        <material name="camera_body_black">
+          <color rgba="0.04 0.04 0.05 1.0"/>
+        </material>
+      </visual>
+      <visual name="camera_front">
+        <origin xyz="-0.012 -0.008 0" rpy="1.5707963 0 0"/>
+        <geometry>
+          <cylinder radius="0.006" length="0.002"/>
+        </geometry>
+        <material name="camera_front_grey">
+          <color rgba="0.18 0.18 0.20 1.0"/>
+        </material>
+      </visual>
+      <visual name="camera_lens">
+        <origin xyz="-0.012 -0.0093 0" rpy="1.5707963 0 0"/>
+        <geometry>
+          <cylinder radius="0.0038" length="0.0006"/>
+        </geometry>
+        <material name="camera_lens_blue">
+          <color rgba="0.03 0.12 0.22 1.0"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.012 0 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.024 0.014 0.032"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <joint name="${prefix}wrist_camera_joint" type="fixed">
+      <parent link="${prefix}cam_holder"/>
+      <child link="${prefix}wrist_camera_link"/>
+      <origin xyz="-0.006 -0.0285 -0.0125" rpy="0 1.43 0"/>
+    </joint>
+
+    <!--
+    光心与镜头中心重合。盒体坐标中的朝外方向为 -Y；
+    pitch=-0.1407963 补偿整条安装链在零位产生的 8.07° 画面滚转；
+    optical frame 使用 ROS 标准：+Z 前、+X 右、+Y 下。
+    -->
+    <link name="${prefix}wrist_camera_optical_frame"/>
+    <joint name="${prefix}wrist_camera_optical_joint" type="fixed">
+      <parent link="${prefix}wrist_camera_link"/>
+      <child link="${prefix}wrist_camera_optical_frame"/>
+      <origin xyz="-0.012 -0.0093 0" rpy="-1.5707963 -0.1407963 -3.1415927"/>
+    </joint>
+  </xacro:macro>
+
+</robot>

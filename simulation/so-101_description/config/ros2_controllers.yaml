@@ -1,0 +1,41 @@
+# 唯一的 ros2_control 控制器配置。
+# 同时供 MoveIt 假硬件和 Gazebo Classic 的 gazebo_ros2_control 使用。
+controller_manager:
+  ros__parameters:
+    # Gazebo world 使用 1 ms 物理步长；position 命令也按 1 kHz 更新，
+    # 避免两个控制周期之间受重力/约束作用而产生可见漂移。
+    update_rate: 1000
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+arm_controller:
+  ros__parameters:
+    joints:
+      - J1_Rotation
+      - J2_Shoulder_Pitch
+      - J3_Elbow_Pitch
+      - J4_Wrist_Pitch
+      - J5_Wrist_Roll
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    state_publish_rate: 50.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+    allow_nonzero_velocity_at_trajectory_end: false
+    set_last_command_interface_value_as_state_on_activation: false
+    interpolation_method: splines
+    constraints:
+      goal_time: 1.0
+      stopped_velocity_tolerance: 0.02
+      J1_Rotation: {trajectory: 0.10, goal: 0.03}
+      J2_Shoulder_Pitch: {trajectory: 0.10, goal: 0.03}
+      J3_Elbow_Pitch: {trajectory: 0.10, goal: 0.03}
+      J4_Wrist_Pitch: {trajectory: 0.10, goal: 0.03}
+      J5_Wrist_Roll: {trajectory: 0.10, goal: 0.03}

@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!--
+MoveIt 使用的 robot_description 入口文件
+MoveItConfigsBuilder 默认从 config/ 目录查找此文件
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="so101_arm">
+  <xacro:arg name="prefix" default=""/>
+
+  <!-- 包含机械臂宏定义 -->
+  <xacro:include filename="$(find so-101_description)/urdf/so101_arm_macro.urdf.xacro"/>
+  <xacro:so101_arm prefix="$(arg prefix)"/>
+</robot>

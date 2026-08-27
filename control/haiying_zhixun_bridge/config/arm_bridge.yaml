@@ -1,0 +1,59 @@
+project:
+  name: 海鹰智巡
+  role_owner: 曹圆圆
+  prototype_only: true
+
+ros2:
+  target_pose_topic: /arm/target_pose
+  current_state_topic: /system/current_state
+  accepted_frame_id: base_footprint
+  allowed_state: BRUSHING
+  orientation_supported: false
+
+ik:
+  server_url: http://127.0.0.1:8766
+  expected_trajectory_frames: 91
+  maximum_position_error_m: 0.002
+
+moveit_real:
+  server_url: http://127.0.0.1:8767
+  hardware_execution_enabled: true
+  display_trajectory_topic: /display_planned_path
+  joint_states_topic: /joint_states
+  simulation_tolerance_deg: 1.0
+  joint_state_timeout_s: 2.0
+
+robot:
+  type: so101_follower_5dof
+  port: /dev/ttyACM0
+  calibration_id: jiebang_follower_arm
+  joint_names:
+    - shoulder_pan
+    - shoulder_lift
+    - elbow_flex
+    - wrist_flex
+    - wrist_roll
+
+geometry:
+  dimensions_mm:
+    j1_to_j2: 55.0
+    j2_to_j3: 135.0
+    j3_to_j4: 135.0
+    j4_to_j5: 55.0
+    j5_to_tcp: 10.0
+  urdf_source: package://arm_urdf/urdf/so101_arm.urdf.xacro
+  end_effector: 卡扣式可替换毛刷模块
+
+mapping:
+  direction_signs: [1.0, 1.0, -1.0, 1.0, 1.0]
+  zero_offsets_deg: [-6.417582417582418, -0.7472527472527473, -0.5274725274725275, 16.967032967032967, -6.197802197802198]
+
+safety:
+  simulation_only: true
+  jog_max_delta_deg: 10.0
+  dry_run_max_frame_step_deg: 1.0
+  restricted_execute_max_frame_step_deg: 2.0
+  restricted_execute_start_error_deg: 20.0
+  restricted_execute_feedback_error_deg: 8.0
+  restricted_execute_positive_z_min_m: 0.008
+  restricted_execute_positive_z_max_m: 0.012

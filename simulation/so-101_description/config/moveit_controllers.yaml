@@ -1,0 +1,27 @@
+# SO-101 MoveIt 控制器管理配置
+# 使用 SimpleControllerManager（仿真/虚拟硬件）
+
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+# 允许低速仿真轨迹留有执行余量，同时严格检查执行起点，避免状态跳变。
+trajectory_execution:
+  allowed_execution_duration_scaling: 1.5
+  allowed_goal_duration_margin: 1.0
+  allowed_start_tolerance: 0.01
+
+moveit_simple_controller_manager:
+  controller_names:
+    - arm_controller
+
+  arm_controller:
+    type: FollowJointTrajectory
+    joints:
+      - J1_Rotation
+      - J2_Shoulder_Pitch
+      - J3_Elbow_Pitch
+      - J4_Wrist_Pitch
+      - J5_Wrist_Roll
+    action_ns: follow_joint_trajectory
+    default: true
+    allowed_execution_duration_scaling: 1.5
+    allowed_goal_duration_margin: 1.0

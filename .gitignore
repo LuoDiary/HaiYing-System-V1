@@ -8,6 +8,7 @@ catkin_ws/
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
 
 # 系统及编辑器临时文件
 .DS_Store
