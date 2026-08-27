@@ -1,9 +1,23 @@
 # arm_uav_joint
 
-`arm_uav_joint` 是 `custom_quad_333.sdf` 为模型源文件的四旋翼 + SO-101
-机械臂联合仿真包。组合模型中的机械臂连杆、挂载质量和五个关节均已保留；四旋翼
-网格放在本包内，机械臂网格复用 `so-101_description`，因此不依赖旧的
-`real_uav` 模型。
+`arm_uav_joint` 承接
+`src/SO101_COMPLETE/V7_SO101_SEND_TO_TEAMMATE` 中 V7 联合仿真的专有内容，
+以 `custom_quad_333.sdf` 作为四旋翼 + SO-101 的唯一联合模型入口。组合模型中的
+无人机、机械臂连杆、挂载质量和五个关节均已保留；四旋翼网格放在本包内，机械臂
+网格和独立控制配置复用 `so-101_description`，不依赖旧的 `real_uav` 模型。
+
+## 包边界
+
+本包只承接 V7 独有的联合仿真部分：
+
+- 最终联合 SDF、custom quad 网格和模型元数据；
+- 联合 Gazebo/PX4/MAVROS 启动入口；
+- SDF 发布清理脚本与 PX4 自动起飞脚本。
+
+已有的 `so-101_description` 不迁移、不复制。SO-101 的 URDF/Xacro、STL、SRDF、
+MoveIt、ros2_control、RViz、控制器配置和风机场景仍由该包唯一维护。这里也不再
+提供名为 `so101_arm_uav_gazebo.urdf.xacro` 的纯机械臂包装文件，因为它不包含
+无人机，容易被误认为联合模型。
 
 ## 环境与依赖
 
@@ -88,13 +102,19 @@ ros2 launch arm_uav_joint arm_uav_joint.launch.py \
 
 ## 模型与路径约定
 
-- 源模型：`models/custom_quad_333/custom_quad_333.sdf`
-- Jinja 源：`models/custom_quad_333/custom_quad_333.sdf.jinja`
+- 唯一联合模型：`models/custom_quad_333/custom_quad_333.sdf`
+- V7 四旋翼模板：`models/custom_quad_333/custom_quad_333.sdf.jinja`；该模板不包含
+  最终人工合并的 SO-101 段，不能用它直接覆盖联合 SDF
 - 四旋翼网格：`models/custom_quad_333/meshes/`
 - 组合模型中的 `model://so-101_description/...` 路径由启动文件加入
   `GAZEBO_MODEL_PATH`
 - `SO101_CUSTOM_QUAD_USE_PX4_PLUGINS` 和 `SO101_CUSTOM_QUAD_STATIC` 由 launch
   参数自动设置，不建议手工覆盖
+
+联合模型必须使用 SDF：PX4 电机、MAVLink、IMU/GPS 等 Gazebo Classic 插件无法
+由普通 URDF 完整表达。若要单独展开和控制机械臂，使用
+`so-101_description/urdf/so101_arm_camera_gazebo.urdf.xacro`，不要在本包再维护
+一份机械臂 URDF。
 
 该包只保证模型资源、ROS 2 启动和构建路径可复现；实际飞行前仍需在目标
 Jetson 上根据 PX4、Gazebo Classic 和飞控连接方式重新标定动力学与安全参数。

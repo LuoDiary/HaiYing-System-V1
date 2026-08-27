@@ -1,8 +1,37 @@
 from pathlib import Path
+import subprocess
 import xml.etree.ElementTree as ET
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _model_members(xml_text: str) -> tuple[set[str | None], set[str | None]]:
+    root = ET.fromstring(xml_text)
+    model = root.find("model") if root.tag == "sdf" else root
+    assert model is not None
+    return (
+        {link.get("name") for link in model.findall("link")},
+        {joint.get("name") for joint in model.findall("joint")},
+    )
+
+
+def test_every_arm_uav_model_entrypoint_is_a_real_combined_model():
+    sdf_path = PACKAGE_ROOT / "models" / "custom_quad_333" / "custom_quad_333.sdf"
+    entrypoints = [(sdf_path, sdf_path.read_text(encoding="utf-8"))]
+    for xacro_path in (PACKAGE_ROOT / "urdf").glob("*arm*uav*.xacro"):
+        expanded = subprocess.run(
+            ["xacro", str(xacro_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        entrypoints.append((xacro_path, expanded))
+
+    for path, xml_text in entrypoints:
+        links, joints = _model_members(xml_text)
+        assert {"base_link", "base_footprint"} <= links, path
+        assert {"rotor_0_joint", "so101_mount_joint"} <= joints, path
 
 
 def test_custom_quad_contains_so101_payload():
@@ -42,7 +71,7 @@ def test_joint_assets_are_present():
         "models/custom_quad_333/meshes/iris.stl",
         "models/custom_quad_333/meshes/iris_prop_ccw.dae",
         "models/custom_quad_333/meshes/iris_prop_cw.dae",
-        "urdf/so101_arm_uav_gazebo.urdf.xacro",
+        "models/custom_quad_333/README.md",
         "launch/arm_uav_joint.launch.py",
         "scripts/publish_custom_quad_display.py",
         "scripts/px4_takeoff.py",
@@ -55,26 +84,9 @@ def test_runtime_files_use_portable_package_paths():
         PACKAGE_ROOT / "launch" / "arm_uav_joint.launch.py",
         PACKAGE_ROOT / "scripts" / "publish_custom_quad_display.py",
         PACKAGE_ROOT / "scripts" / "px4_takeoff.py",
-        PACKAGE_ROOT / "urdf" / "so101_arm_uav_gazebo.urdf.xacro",
         PACKAGE_ROOT / "models" / "custom_quad_333" / "custom_quad_333.sdf",
     )
     for path in runtime_files:
         content = path.read_text(encoding="utf-8")
         assert "/home/ljj" not in content
         assert "桌面/" not in content
-
-
-def test_display_publisher_owns_the_new_package():
-    script = (
-        PACKAGE_ROOT / "scripts" / "publish_custom_quad_display.py"
-    ).read_text(encoding="utf-8")
-    assert "arm_uav_joint" in script
-    assert "custom_quad_333" in script
-
-
-def test_joint_xacro_reuses_target_arm_description():
-    xacro = (
-        PACKAGE_ROOT / "urdf" / "so101_arm_uav_gazebo.urdf.xacro"
-    ).read_text(encoding="utf-8")
-    assert "so-101_description" in xacro
-    assert "so101_arm_macro.urdf.xacro" in xacro

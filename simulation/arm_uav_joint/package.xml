@@ -2,7 +2,7 @@
 <package format="3">
   <name>arm_uav_joint</name>
   <version>0.1.0</version>
-  <description>custom_quad_333 与 SO-101 机械臂联合仿真及 PX4/MAVROS 启动包</description>
+  <description>V7 custom_quad_333 与 SO-101 联合模型及 PX4/MAVROS 启动包</description>
   <maintainer email="miwusenlin.g@qq.com">fog</maintainer>
   <license>MIT</license>
 
