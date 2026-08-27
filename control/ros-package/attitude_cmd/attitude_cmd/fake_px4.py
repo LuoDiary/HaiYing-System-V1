@@ -45,6 +45,17 @@ def main():
                 if msg.command == mavlink.MAV_CMD_DO_SET_MODE:
                     if int(msg.param2) == 6:
                         mode = 6
+                    elif int(msg.param2) == 3:
+                        mode = 3
+                    elif int(msg.param2) == 4:
+                        if int(msg.param3) == 3:
+                            mode = 4
+                        elif int(msg.param3) == 5:
+                            mode = 5
+                        elif int(msg.param3) == 6:
+                            mode = 12
+                        else:
+                            mode = 4
                     elif int(msg.param2) == 1:
                         mode = 1
                     conn.mav.command_ack_send(msg.command, 0, 0, 0, 0, 0)
