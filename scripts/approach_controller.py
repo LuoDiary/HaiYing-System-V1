@@ -30,7 +30,9 @@ class ApproachController(Node):
         self.declare_parameter('brush_distance', 0.5)       # 作业距离(m)
         self.declare_parameter('max_speed', 1.0)            # 最大接近速度(m/s)
         self.declare_parameter('target_timeout', 3.0)       # 目标丢失超时(s)
+        self.declare_parameter('pose_source', 'mavros')     # mavros=飞控位姿, gt=Gazebo真值
         self.declare_parameter('pose_topic', '/mavros/local_position/pose')
+        self.declare_parameter('pose_gt_topic', '/drone/pose_gt')
 
         self.approach_dist = self.get_parameter('approach_distance').value
         self.brush_dist = self.get_parameter('brush_distance').value
@@ -47,9 +49,18 @@ class ApproachController(Node):
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.create_subscription(
             PointStamped, '/vision/target_point', self._on_target, 10)
-        self.create_subscription(
-            PoseStamped, self.get_parameter('pose_topic').value,
-            self._on_pose, qos)
+
+        pose_source = self.get_parameter('pose_source').value
+        if pose_source == 'gt':
+            self.create_subscription(
+                PoseStamped, self.get_parameter('pose_gt_topic').value,
+                self._on_pose, qos)
+            self.get_logger().info('位姿源: Gazebo真值 (/drone/pose_gt)')
+        else:
+            self.create_subscription(
+                PoseStamped, self.get_parameter('pose_topic').value,
+                self._on_pose, qos)
+            self.get_logger().info('位姿源: MAVROS (/mavros/local_position/pose)')
 
         # --- 发布 ---
         self.state_pub = self.create_publisher(
@@ -74,6 +85,7 @@ class ApproachController(Node):
     def _control_loop(self):
         """主控制循环 — 状态机"""
         now = time.time()
+        self._publish_state()  # 持续发布状态
 
         # 检查目标超时
         has_target = (self.latest_target is not None and
@@ -142,10 +154,13 @@ class ApproachController(Node):
     def _set_state(self, new_state: str):
         if self.state != new_state:
             self.state = new_state
-            msg = String()
-            msg.data = new_state
-            self.state_pub.publish(msg)
             self.get_logger().info(f'状态切换: → {new_state}')
+
+    def _publish_state(self):
+        """持续发布当前状态 (10Hz) - 防止下游丢消息"""
+        msg = String()
+        msg.data = self.state
+        self.state_pub.publish(msg)
 
     def _publish_cmd_vel(self, vx: float, vy: float, vz: float, yaw_rate: float):
         msg = Twist()

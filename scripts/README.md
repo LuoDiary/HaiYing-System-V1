@@ -13,6 +13,12 @@
 | `gz_camera_bridge.py` | 辅助 | Gazebo RGB相机 → ROS2 |
 | `gz_depth_bridge.py` | 辅助 | Gazebo 深度相机 → ROS2 (32FC1) |
 | `tf_publisher.py` | 辅助 | world→base_link→camera_frame TF发布 |
+| `live_turbine_5shots.py` | 验收 | Gazebo实时检测，保存5张不同缺陷/视角截图 |
+| `live_turbine_detect.py` | 验收 | 实时检测 + 相机多视角扫描，检出即存截图 |
+| `test_turbine_model.py` | 验收 | 模型自检：训练集/实时画面跑检测 |
+| `collect_turbine_data.py` | 数据 | Gazebo渲染图采集 + 缺陷坐标投影自动标注YOLO标签 |
+| `pose_gt_bridge.py` | 辅助 | Gazebo真值位姿 → `/drone/pose_gt`（MAVROS EKF不可靠时的备选位姿源，`approach_controller.py` 设 `pose_source:=gt` 使用） |
+| `lidar_bridge.py` | 辅助 | Gazebo LiDAR → ROS2 PointCloud2（`target_localizer.py` 雷达深度输入） |
 | `wind_turbine_interfaces/` | 接口包 | 自定义消息/服务 (DefectDetection, DefectDetectionArray, StartInspection)，`yolo_detector.py`/`target_localizer.py` 依赖，运行前需 colcon build |
 
 ## 运行方式

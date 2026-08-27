@@ -163,8 +163,8 @@ class YoloDetector(Node):
 
         # 缩放回原图
         if len(det):
-            gain_w = self.imgsz[1] / new_w
-            gain_h = self.imgsz[0] / new_h
+            gain_w = new_w / w0
+            gain_h = new_h / h0
             det[:, [0, 2]] = (det[:, [0, 2]] - left) / gain_w
             det[:, [1, 3]] = (det[:, [1, 3]] - top) / gain_h
             det[:, [0, 2]] = det[:, [0, 2]].clamp(0, w0)
