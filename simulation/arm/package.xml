@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>arm_urdf</name>
+  <name>arm</name>
   <version>0.1.0</version>
   <description>仓库现有 SO-101 比赛改型机械臂的仿真组交付副本</description>
   <maintainer email="maintainer@example.com">arm team</maintainer>

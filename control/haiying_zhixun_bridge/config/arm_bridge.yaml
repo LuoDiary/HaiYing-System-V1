@@ -41,7 +41,7 @@ geometry:
     j3_to_j4: 135.0
     j4_to_j5: 55.0
     j5_to_tcp: 10.0
-  urdf_source: package://arm_urdf/urdf/so101_arm.urdf.xacro
+  urdf_source: package://arm/urdf/so101_arm.urdf.xacro
   end_effector: 卡扣式可替换毛刷模块
 
 mapping:

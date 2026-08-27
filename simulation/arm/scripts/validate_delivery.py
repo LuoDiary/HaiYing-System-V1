@@ -110,8 +110,8 @@ def validate_model(model_name: str, expected_mass: float):
 
         for mesh in link.findall(".//mesh"):
             uri = mesh.get("filename")
-            if uri.startswith("package://arm_urdf/"):
-                mesh_path = PACKAGE_ROOT / uri.removeprefix("package://arm_urdf/")
+            if uri.startswith("package://arm/"):
+                mesh_path = PACKAGE_ROOT / uri.removeprefix("package://arm/")
                 if not mesh_path.is_file():
                     raise RuntimeError(f"{model_name}: 缺少网格 {mesh_path}")
 

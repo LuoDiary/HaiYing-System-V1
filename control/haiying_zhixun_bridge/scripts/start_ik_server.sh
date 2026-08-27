@@ -26,7 +26,7 @@ if [[ -z "${conda_command}" ]]; then
 fi
 
 conda_environment="${HAIYING_CONDA_ENV:-haiying}"
-model_root="${HAIYING_ARM_URDF_ROOT:-${repository_root}/simulation/arm_urdf}"
+model_root="${HAIYING_ARM_ROOT:-${repository_root}/simulation/arm}"
 exec "${conda_command}" run --no-capture-output -n "${conda_environment}" lerobot-ik-sim \
   --host=127.0.0.1 \
   --port=8766 \

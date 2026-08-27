@@ -80,7 +80,7 @@ IK 在后台单工作线程执行；已有目标规划时拒绝第二个目标�
 桥接配置通过以下可移植 URI 复用本地模型：
 
 ```text
-package://arm_urdf/urdf/so101_arm.urdf.xacro
+package://arm/urdf/so101_arm.urdf.xacro
 ```
 
 无 Gazebo 的 MoveIt 验证：

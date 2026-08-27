@@ -4,7 +4,7 @@
 
 - Python 3.12 环境：`haiying`
 - LeRobot：按项目约定安装在独立的 `haiying` Conda 环境，不提交到本仓库
-- IK 使用的无相机模型：由仿真组放入 `simulation/arm_urdf`，或通过 `HAIYING_ARM_URDF_ROOT` 指定
+- IK 使用的无相机模型：由仿真组放入 `simulation/arm`，或通过 `HAIYING_ARM_ROOT` 指定
 - IK 服务：`http://127.0.0.1:8766`
 - 当前机械臂串口：`/dev/ttyACM0`
 - 校准 ID：`jiebang_follower_arm`

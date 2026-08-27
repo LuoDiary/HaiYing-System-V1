@@ -1,4 +1,4 @@
-# arm_urdf
+# arm
 
 这是从本仓库 `src/so-101_description` 整理出来的轻量交付副本，保留了现有模型的
 5DOF 运动链、坐标系、末端和惯性参数。为方便单独使用，只改了包名和网格路径，没有改
@@ -14,15 +14,15 @@
 在工作空间里构建和查看：
 
 ```bash
-colcon build --packages-select arm_urdf --symlink-install
+colcon build --packages-select arm --symlink-install
 source install/setup.bash
-ros2 launch arm_urdf display.launch.py
+ros2 launch arm display.launch.py
 ```
 
 不带相机：
 
 ```bash
-ros2 launch arm_urdf display.launch.py with_camera:=false
+ros2 launch arm display.launch.py with_camera:=false
 ```
 
 模型自检：
@@ -30,5 +30,4 @@ ros2 launch arm_urdf display.launch.py with_camera:=false
 ```bash
 python3 scripts/validate_delivery.py
 ```
-
 

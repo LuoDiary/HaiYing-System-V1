@@ -36,7 +36,7 @@
   - 两侧通过本机 `127.0.0.1` HTTP 服务通信。运行 `ros2 launch` 的终端不要激活
     `haiying`，运行 LeRobot 命令的终端不要用系统 Python 直接启动实机服务。
 - 仿真启动文件需要仿真组提供并构建 `so-101_description`；旧位置 IK 路径需要
-  `simulation/arm_urdf` 模型。
+  `simulation/arm` 模型。
 - 仓库不包含 LeRobot 源码、Conda 环境、校准缓存、YOLO 权重或数据集。当前工作空间
   中若存在 `../../vendor/lerobot`，它是仓库外的 LeRobot 源码目录。
 

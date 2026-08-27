@@ -99,7 +99,7 @@ def test_config_preserves_fixed_topics_and_measured_mapping():
     assert config.ros2.current_state_topic == CURRENT_STATE_TOPIC
     assert config.ros2.allowed_state == MissionState.BRUSHING.value
     assert config.geometry.dimensions_mm == (55.0, 135.0, 135.0, 55.0, 10.0)
-    assert config.geometry.urdf_source == "package://arm_urdf/urdf/so101_arm.urdf.xacro"
+    assert config.geometry.urdf_source == "package://arm/urdf/so101_arm.urdf.xacro"
     assert config.mapping.direction_signs == (1.0, 1.0, -1.0, 1.0, 1.0)
     assert config.mapping.zero_offsets_deg == pytest.approx(
         (-6.417582417582418, -0.7472527472527473, -0.5274725274725275, 16.967032967032967, -6.197802197802198)

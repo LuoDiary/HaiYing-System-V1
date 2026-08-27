@@ -10,7 +10,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _launch_setup(context):
-    package_path = get_package_share_directory("arm_urdf")
+    package_path = get_package_share_directory("arm")
     with_camera = LaunchConfiguration("with_camera").perform(context).lower() == "true"
     model_name = (
         "so101_arm_camera.urdf.xacro"

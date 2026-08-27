@@ -6,21 +6,21 @@
 
 | 路径 | 作用 |
 |---|---|
-| `arm_urdf/` | 轻量、自包含的 SO-101 五自由度 URDF；供 IK 服务、TF 和模型交付使用 |
+| `arm/` | 轻量、自包含的 SO-101 五自由度 URDF；供 IK 服务、TF 和模型交付使用 |
 | `so-101_description/` | Gazebo Classic、MoveIt 2、ros2_control、腕部相机和风机场景联调包 |
 
 两个包均可由工作空间根目录直接构建：
 
 ```bash
 source /opt/ros/humble/setup.bash
-colcon build --base-paths simulation --packages-select arm_urdf so-101_description --symlink-install
+colcon build --base-paths simulation --packages-select arm so-101_description --symlink-install
 source install/setup.bash
 ```
 
 仅查看轻量模型：
 
 ```bash
-ros2 launch arm_urdf display.launch.py
+ros2 launch arm display.launch.py
 ```
 
 启动 Gazebo、MoveIt 和 RViz：
