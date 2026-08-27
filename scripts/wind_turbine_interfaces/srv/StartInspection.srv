@@ -1,0 +1,9 @@
+# 触发/停止风机巡检任务
+
+bool enable               # true=开始巡检, false=停止巡检
+string target_turbine     # 目标风机编号 (空=全部)
+
+---
+# 响应
+bool success              # 是否成功
+string message            # 状态信息
