@@ -24,6 +24,23 @@
 - `/arm/target_pose` 与 `/system/current_state` 桥接代码、非阻塞规划和过期结果保护；
 - 无 ROS Mock 流程，以及已在 Humble 构建并启动验证的 `ament_python` 包；
 - 本地 SRDF、MoveIt、ros2_control 与 Gazebo 风机场景的 Plan+Execute 冒烟验证。
+- `MoveIt → Gazebo → GUI 人工确认 → SO-101 实机`正式执行链路；
+- 仓库内 `control/lerobot` Python 3.12/Feetech 运行时，Jetson 不再依赖工作空间外源码；
+- 逐关节 URDF 限位及上下各 `1°` 数值容错、轨迹哈希、起点对齐和反馈超差中止；
+- 默认 MoveIt 速度/加速度缩放 `0.2`，实机 50 Hz 下发、25°/s 安全上限和 10 Hz 反馈检查；
+- 实机执行客户端 180 秒超时，健康检查和不接硬件的轨迹验证保持 10 秒。
+
+## 当前已确认基线
+
+- 五轴顺序：`J1_Rotation, J2_Shoulder_Pitch, J3_Elbow_Pitch, J4_Wrist_Pitch, J5_Wrist_Roll`；
+- MoveIt group：`arm`；root：`base_footprint`；TCP：`end_effector`；
+- 正式实机入口：RViz `Plan & Execute` 后由 `moveit_real_gui.launch.py` 验证 Gazebo
+  终点，再调用本机 `127.0.0.1:8767` 实机服务；历史 `127.0.0.1:8766` IK 只保留兼容，
+  不属于当前正式链路；
+- 舵机方向：`[+1,+1,-1,+1,+1]`；唯一有效零偏：
+  `[-0.175824,-0.747253,-0.527473,16.967033,-11.208791]°`；
+- 仿真或轨迹验证报错时不会连接实体机械臂；实机执行中持续反馈超差或串口异常时停止
+  后续下发并断开，不自动安全回收，现场必须保留急停/断电能力。
 
 ## M3 必做工作
 
@@ -33,7 +50,8 @@
 4. 明确 `base_footprint`、每个 joint frame、毛刷 TCP 和无人机安装 frame。
 5. 补全 URDF inertial、collision 简化体和毛刷单一末端模型。
 6. 与郑经纬完成 RViz 图形验收、无人机挂载 TF 和 Gazebo 连续运行验收（无界面加载与执行已通过）。
-7. 与陈晓瑜把已完成的 `BRUSHING` 状态门控继续接到 MoveIt 笛卡尔目标或统一轨迹适配器。
+7. 与陈晓瑜确定 `/arm/target_pose` 到 MoveIt 的正式自主规划入口；当前 GUI 实机链路已
+   可用，但状态机自动执行仍未启用。
 8. 与硬件组完成原型机角度、实际 TCP 位移、重复定位和异常中止测试。
 
 ## 验收证据

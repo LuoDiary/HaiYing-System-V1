@@ -22,7 +22,10 @@ from .lerobot_adapter import (
     POSITION_P_COEFFICIENT,
     SERVO_ACCELERATION,
     SERVO_DEAD_ZONE,
+    JOINT_LIMIT_TOLERANCE_DEG,
+    MOVEIT_JOINT_LIMITS_DEG,
     URDF_JOINT_NAMES,
+    URDF_JOINT_LIMITS_DEG,
     IKRealConfig,
     RobotLike,
     _make_robot,
@@ -47,20 +50,19 @@ class MoveItRealServerConfig:
     robot_id: str = "jiebang_follower_arm"
     calibration_dir: Path | None = None
     hardware_execution_enabled: bool = False
-    execution_rate_hz: float = 20.0
-    maximum_duration_s: float = 120.0
-    maximum_joint_speed_deg_s: float = 20.0
-    maximum_frame_step_deg: float = 2.0
+    execution_rate_hz: float = 50.0
+    maximum_duration_s: float = 180.0
+    maximum_joint_speed_deg_s: float = 25.0
+    maximum_frame_step_deg: float = 5.0
     maximum_trajectory_time_stretch: float = 5.0
     maximum_command_clip_deg: float = 0.5
     maximum_start_error_deg: float = 20.0
     maximum_feedback_error_deg: float = 8.0
     wrist_roll_feedback_error_deg: float = 15.0
     feedback_lag_s: float = 0.15
-    feedback_check_interval_frames: int = 2
+    feedback_check_interval_frames: int = 5
     feedback_error_grace_samples: int = 5
     final_settle_timeout_s: float = 2.0
-    joint_limit_deg: float = 89.9
 
     def __post_init__(self) -> None:
         if self.host not in {"127.0.0.1", "localhost"}:
@@ -78,7 +80,6 @@ class MoveItRealServerConfig:
             self.maximum_feedback_error_deg,
             self.wrist_roll_feedback_error_deg,
             self.final_settle_timeout_s,
-            self.joint_limit_deg,
         )
         if not all(math.isfinite(value) and value > 0.0 for value in positive):
             raise ValueError("所有实机轨迹安全参数必须是正的有限数值")
@@ -108,8 +109,6 @@ class MoveItRealServerConfig:
             or self.feedback_error_grace_samples > 20
         ):
             raise ValueError("feedback_error_grace_samples 必须位于 1 到 20")
-        if self.joint_limit_deg > 90.0:
-            raise ValueError("joint_limit_deg 不得超过 URDF 的 90° 限位")
 
 
 @dataclass(frozen=True)
@@ -244,11 +243,15 @@ def validate_moveit_trajectory(
         raise ValueError(
             f"MoveIt 轨迹时长必须位于 0.05 到 {config.maximum_duration_s:g} 秒"
         )
-    maximum_angle = max(abs(angle) for frame in positions for angle in frame)
-    if maximum_angle > config.joint_limit_deg:
-        raise ValueError(
-            f"MoveIt 轨迹关节角 {maximum_angle:.3f}° 超过 ±{config.joint_limit_deg:g}° 限位"
-        )
+    for point_index, frame in enumerate(positions, start=1):
+        for joint_index, joint_name in enumerate(URDF_JOINT_NAMES):
+            lower_limit, upper_limit = MOVEIT_JOINT_LIMITS_DEG[joint_name]
+            angle = frame[joint_index]
+            if not lower_limit <= angle <= upper_limit:
+                raise ValueError(
+                    f"MoveIt 轨迹第 {point_index} 点 {joint_name} 关节角 "
+                    f"{angle:.3f}° 超过 {lower_limit:.3f}°～{upper_limit:.3f}° 限位"
+                )
 
     maximum_speed = 0.0
     for start_time, end_time, start, end in zip(
@@ -370,7 +373,9 @@ def execute_moveit_trajectory(
         if remaining_s > 0.0:
             time.sleep(remaining_s)
         action = {f"{name}.pos": value for name, value in target.items()}
-        sent_value = robot.send_action(action)
+        # 轨迹已经按速度和单帧步长完成验证；关闭 LeRobot 基于实时反馈的
+        # 二次裁剪，避免每帧额外串口读取及反馈量化噪声破坏下发节拍。
+        sent_value = robot.send_action(action, max_relative_target=0.0)
         final_sent = {
             name: float(cast(dict[str, object], sent_value)[f"{name}.pos"])
             for name in JOINT_NAMES
@@ -492,6 +497,13 @@ class MoveItRealServer(ThreadingHTTPServer):
             "calibration_valid": calibration_valid,
             "calibration_error": calibration_error,
             "urdf_joint_names": list(URDF_JOINT_NAMES),
+            "urdf_joint_limits_deg": {
+                name: list(limits) for name, limits in URDF_JOINT_LIMITS_DEG.items()
+            },
+            "joint_limit_tolerance_deg": JOINT_LIMIT_TOLERANCE_DEG,
+            "joint_limits_deg": {
+                name: list(limits) for name, limits in MOVEIT_JOINT_LIMITS_DEG.items()
+            },
             "real_joint_names": list(JOINT_NAMES),
             "direction_signs": list(JOINT_DIRECTIONS),
             "zero_offsets_deg": list(JOINT_OFFSETS_DEG),

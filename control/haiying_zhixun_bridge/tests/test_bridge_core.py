@@ -102,7 +102,13 @@ def test_config_preserves_fixed_topics_and_measured_mapping():
     assert config.geometry.urdf_source == "package://arm/urdf/so101_arm.urdf.xacro"
     assert config.mapping.direction_signs == (1.0, 1.0, -1.0, 1.0, 1.0)
     assert config.mapping.zero_offsets_deg == pytest.approx(
-        (-6.417582417582418, -0.7472527472527473, -0.5274725274725275, 16.967032967032967, -6.197802197802198)
+        (
+            -0.17582417582417584,
+            -0.7472527472527473,
+            -0.5274725274725275,
+            16.967032967032967,
+            -11.208791208791208,
+        )
     )
     assert config.moveit_real.server_url == "http://127.0.0.1:8767"
     assert config.moveit_real.hardware_execution_enabled is True

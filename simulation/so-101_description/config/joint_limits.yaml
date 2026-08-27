@@ -2,8 +2,8 @@
 # 覆盖/增强 URDF 中定义的限位
 
 # 默认速度/加速度缩放因子（适合初学者，生产环境可调高至 1.0）
-default_velocity_scaling_factor: 0.1
-default_acceleration_scaling_factor: 0.1
+default_velocity_scaling_factor: 0.2
+default_acceleration_scaling_factor: 0.2
 
 joint_limits:
   J1_Rotation:

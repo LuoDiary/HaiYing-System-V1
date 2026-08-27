@@ -1,4 +1,5 @@
 import math
+from unittest.mock import patch
 
 import pytest
 
@@ -68,3 +69,24 @@ def test_simulation_endpoint_error_uses_canonical_joint_order():
 def test_moveit_real_client_rejects_nonlocal_server():
     with pytest.raises(ValueError, match="本机"):
         MoveItRealClient("http://192.168.1.20:8767")
+
+
+def test_moveit_real_client_uses_longer_timeout_only_for_execute():
+    snapshot = build_snapshot(
+        list(URDF_JOINT_NAMES),
+        [[0.0] * 5, [0.1] * 5],
+        [0.0, 1.0],
+        list(URDF_JOINT_NAMES),
+        [0.0] * 5,
+    )
+    client = MoveItRealClient(
+        "http://127.0.0.1:8767", timeout_s=10.0, execute_timeout_s=180.0
+    )
+
+    with patch("haiying_zhixun_bridge.moveit_bridge.urlopen") as urlopen:
+        with patch("haiying_zhixun_bridge.moveit_bridge.json.load", return_value={}):
+            client.health()
+            client.validate(snapshot)
+            client.execute("a" * 64)
+
+    assert [call.kwargs["timeout"] for call in urlopen.call_args_list] == [10.0, 10.0, 180.0]

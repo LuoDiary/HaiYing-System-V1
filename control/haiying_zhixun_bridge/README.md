@@ -24,8 +24,8 @@
 - 不连接硬件的 MoveIt/Gazebo 冒烟测试入口。
 
 当前现场映射为方向 `[+1,+1,-1,+1,+1]`，零偏
-`[-6.417582,-0.747253,-0.527473,16.967033,-6.197802]°`。这些参数仍需通过最终
-小角度实机验收固化，修改时必须同时更新 `config/arm_bridge.yaml` 和
+`[-0.175824,-0.747253,-0.527473,16.967033,-11.208791]°`。这是当前唯一有效的
+实机零偏；修改时必须同时更新 `config/arm_bridge.yaml` 和
 `haiying_zhixun_bridge/lerobot_adapter.py`。
 
 ## 环境与依赖
@@ -35,15 +35,16 @@
   - `haiying` 环境：LeRobot、IK 和串口实机服务，使用 Python 3.12；
   - 两侧通过本机 `127.0.0.1` HTTP 服务通信。运行 `ros2 launch` 的终端不要激活
     `haiying`，运行 LeRobot 命令的终端不要用系统 Python 直接启动实机服务。
-- 仿真启动文件需要仿真组提供并构建 `so-101_description`；旧位置 IK 路径需要
-  `simulation/arm` 模型。
-- 仓库不包含 LeRobot 源码、Conda 环境、校准缓存、YOLO 权重或数据集。当前工作空间
-  中若存在 `../../vendor/lerobot`，它是仓库外的 LeRobot 源码目录。
+- MoveIt/Gazebo 正式链路使用 `simulation/so-101_description`。`control/lerobot` 中的
+  本地 IK 是历史兼容工具，不是 MoveIt 仿真实机流程的必需服务；其旧模型路径只有在
+  明确设置 `HAIYING_ARM_URDF_ROOT` 后才可使用。
+- 仓库内包含裁剪后的 LeRobot 0.6.1 运行时源码 `control/lerobot`，用于 Jetson/Ubuntu
+  离线安装；仓库不包含 Conda 环境、校准缓存、YOLO 权重、训练数据集或模型权重。
 
 ### `haiying` 环境版本
 
 下面是本机已验证的实机链路版本；版本约束来自 LeRobot 当前源码的
-`vendor/lerobot/pyproject.toml`，括号内为本机实际版本。
+`control/lerobot/pyproject.toml`，括号内为本机实际版本。
 
 
 | 依赖                |         版本约束 | 本机已验证版本 | 用途                          |
@@ -75,8 +76,8 @@ conda create -n haiying python=3.12 -y
 conda activate haiying
 python -m pip install --upgrade pip
 
-# 推荐：使用工作空间中仓库外的 LeRobot 源码（路径不存在时改为实际路径）
-python -m pip install -e ../../vendor/lerobot
+# 使用仓库内的海鹰 LeRobot 运行时源码
+python -m pip install -e ./control/lerobot
 
 # 如果没有本地 LeRobot 源码，可改用相同版本的发布包：
 # python -m pip install "lerobot[feetech]==0.6.1"
@@ -103,9 +104,12 @@ command -v lerobot-ik-sim lerobot-ik-real lerobot-calibrate haiying-moveit-real-
 ROS 2 构建必须在未激活 `haiying` 的系统 ROS 终端执行：
 
 ```bash
-cd <arm_ws>/src/HaiYing-System-V1
+cd <arm_ws>
 source /opt/ros/humble/setup.bash
-colcon build --base-paths control --packages-select haiying_zhixun_bridge --symlink-install
+colcon build \
+  --base-paths src/HaiYing-System-V1/simulation src/HaiYing-System-V1/control \
+  --packages-select so-101_description haiying_zhixun_bridge \
+  --symlink-install
 source install/setup.bash
 ```
 
@@ -120,10 +124,12 @@ ros2 run haiying_zhixun_bridge haiying-arm-bridge-node
 
 ## `haiying` 环境操作
 
-### 1. 启动 IK 服务、规划和 dry-run
+### 1. 历史本地 IK 工具（非正式实机入口）
 
-终端 A 使用任意普通 shell；启动脚本会自动调用 `haiying` 环境中的
-`lerobot-ik-sim`。该服务只使用 URDF 模型，不访问串口：
+该路径保留用于历史 Windows 可视化和位置 IK 联调，不是当前
+“MoveIt → Gazebo → 人工确认 → 实机”正式执行入口。启动前必须把
+`HAIYING_ARM_URDF_ROOT` 指向仍包含兼容 `arm_urdf` 结构的模型目录；仅启动服务不会
+访问串口：
 
 ```bash
 cd <arm_ws>/src/HaiYing-System-V1
@@ -173,8 +179,8 @@ lerobot-calibrate \
 ~/.cache/huggingface/lerobot/calibration/robots/so101_follower_5dof/jiebang_follower_arm.json
 ```
 
-校准完成后按以下顺序测试。`inspect` 会连接并读取反馈但不发送目标位置；`jog`
-会移动单个关节；`execute` 会执行已通过 dry-run 的轨迹：
+校准完成后按以下顺序测试。`inspect` 会连接并读取反馈但不发送目标位置，`jog`
+只用于 1° 级单关节验收。正式轨迹执行统一使用后文 MoveIt 实机 GUI：
 
 ```bash
 # 只读状态检查（会连接舵机）
@@ -184,17 +190,10 @@ python control/haiying_zhixun_bridge/scripts/arm_control.py \
 # 先只做 1° 单轴点动
 python control/haiying_zhixun_bridge/scripts/arm_control.py \
   --allow-hardware jog --joint shoulder_pan --delta-deg 1
-
-# 仅在确认轨迹、起始姿态和现场安全条件后执行
-python control/haiying_zhixun_bridge/scripts/arm_control.py \
-  --allow-hardware execute \
-  --plan-id <PLAN_ID> \
-  --confirm-execute
 ```
 
-`--allow-hardware` 和 `--confirm-execute` 是有意设置的双重人工确认。执行前仍会检查
-校准、五个关节起始误差、轨迹范围、速度、单帧步长和反馈误差。任何实机测试都应
-空载、小角度，并保持急停或断电可用。
+任何实机测试都应空载、小角度，并保持急停或断电可用。不要把历史 IK 的直接执行
+命令作为正式任务入口。
 
 ## MoveIt 仿真到实机
 
@@ -220,6 +219,10 @@ ros2 launch haiying_zhixun_bridge moveit_real_gui.launch.py
 操作顺序为 RViz `Plan & Execute`、等待 Gazebo 到达、GUI 验证轨迹、勾选现场安全
 确认，最后通过红色按钮二次确认控制实体机械臂。详细步骤见
 [`docs/MOVEIT_REAL_GUI.md`](docs/MOVEIT_REAL_GUI.md)。
+GUI 的健康检查和轨迹验证请求超时为 10 s，实体轨迹执行请求超时为 180 s。服务允许
+平滑拉伸后的轨迹最长 180 s；现场规划应明显短于该上限，为起始对齐、串口重试和末端
+稳定保留时间。MoveIt 默认速度/加速度缩放均为 `0.2`，对应默认最大规划速度约
+`11.46°/s`。
 
 如果运行 `haiying-moveit-real-server` 时出现 `ModuleNotFoundError: lerobot` 或
 `ModuleNotFoundError: draccus`，说明实机服务没有在 `haiying` 环境中运行；不要把
@@ -230,9 +233,16 @@ ros2 launch haiying_zhixun_bridge moveit_real_gui.launch.py
 
 ## 安全参数
 
-实机服务默认只监听 `127.0.0.1:8767`。当前启动脚本使用：20 Hz、最大速度
-20°/s、单帧 2°、首帧误差 20°、普通关节反馈误差 8°、腕滚反馈误差 15°、关节限位
-±89.9°、轨迹最长 120 s。任何实机测试均应空载、小角度，并保持急停或断电可用。
+实机服务默认只监听 `127.0.0.1:8767`。当前启动脚本使用：50 Hz 下发、最大速度
+25°/s、单帧 5°、首帧误差 20°、每 5 帧（10 Hz）读取一次反馈、普通关节反馈误差
+8°、腕滚反馈误差 15°。经服务验证的轨迹会绕过 LeRobot 基于实时读数的二次相对
+裁剪，避免反馈量化和额外串口读取破坏 50 Hz 节拍；服务端速度、步长、起点和持续
+反馈保护仍然有效。关节限位按 URDF 逐关节限制，并在服务校验时上下各保留 `1°`
+容错：J1/J4 为
+`±90.954°`，J2 为 `-31.000°～167.158°`，J3 为 `-1.000°～180.909°`，
+J5 为 `±180.909°`。该容错只用于轨迹数值校验，不改变 Gazebo/MoveIt 的 URDF
+模型限位；轨迹最长 180 s。连接时写入位置环 PID `24/0/32`、加速度 `100`、死区
+`5`。任何实机测试均应空载、小角度，并保持急停或断电可用。
 
 ## 测试
 

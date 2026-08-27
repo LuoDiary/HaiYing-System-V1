@@ -14,6 +14,7 @@ control/
 │       └── README.md
 ├── ros-package/      # 飞控 ROS 2 功能包
 ├── haiying_zhixun_bridge/ # SO-101 仿真与实机桥接
+├── lerobot/           # SO-101 Jetson/Ubuntu 本地实机运行时源码
 └── README.md
 ```
 
@@ -28,6 +29,7 @@ control/
 | 路径 | 负责人 | 作用 |
 |---|---|---|
 | `haiying_zhixun_bridge/` | 曹圆圆 | 订阅 `/arm/target_pose` 与 `/system/current_state`，完成机械臂规划门控、MoveIt 仿真轨迹验证和 LeRobot 实机安全执行 |
+| `lerobot/` | 曹圆圆 | Python 3.12 下的 SO-101 五轴、Feetech 串口、校准和兼容 IK 运行时；不由 colcon 构建 |
 
 机械臂包默认只在系统状态为 `BRUSHING` 时接受目标，并且 ROS 节点默认只规划、
 不自动连接或移动实体机械臂。构建和实机操作步骤见

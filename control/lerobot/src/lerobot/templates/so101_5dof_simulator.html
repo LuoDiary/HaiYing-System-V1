@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>SO-101 5DOF 逆运动学仿真器</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Microsoft YaHei", system-ui, sans-serif;
+      --panel: rgba(15, 23, 42, 0.92);
+      --line: #334155;
+      --muted: #94a3b8;
+      --accent: #8b5cf6;
+      --good: #22c55e;
+      --bad: #fb7185;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: #020617; color: #e2e8f0; overflow: hidden; }
+    #app { display: grid; grid-template-columns: 280px 1fr 310px; height: 100vh; }
+    .panel { background: var(--panel); padding: 22px; overflow-y: auto; border-color: var(--line); }
+    .left { border-right: 1px solid var(--line); }
+    .right { border-left: 1px solid var(--line); }
+    h1 { font-size: 20px; margin: 0 0 6px; }
+    h2 { font-size: 13px; color: #c4b5fd; letter-spacing: .08em; text-transform: uppercase; margin: 24px 0 12px; }
+    .subtitle, .hint { color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .field { margin: 11px 0; }
+    label { display: flex; justify-content: space-between; color: #cbd5e1; font-size: 13px; margin-bottom: 6px; }
+    input[type="number"] { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #0f172a; color: white; font-size: 15px; }
+    button { border: 0; border-radius: 8px; padding: 11px 14px; font-weight: 700; cursor: pointer; color: white; background: #334155; }
+    button.primary { width: 100%; margin-top: 12px; background: linear-gradient(135deg, #7c3aed, #4f46e5); }
+    button:hover { filter: brightness(1.15); }
+    button:disabled { opacity: .45; cursor: wait; }
+    .buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    #viewport { position: relative; min-width: 0; }
+    #canvas { width: 100%; height: 100%; display: block; }
+    .viewport-note { position: absolute; left: 18px; bottom: 16px; padding: 8px 11px; border-radius: 8px; background: rgba(2, 6, 23, .72); color: var(--muted); font-size: 12px; pointer-events: none; }
+    .axis-legend { position: absolute; right: 18px; top: 16px; display: flex; gap: 10px; padding: 7px 10px; border-radius: 8px; background: rgba(2, 6, 23, .72); font-size: 12px; }
+    .x { color: #ef4444; } .y { color: #22c55e; } .z { color: #3b82f6; }
+    #status { padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: #0f172a; font-size: 13px; line-height: 1.5; }
+    #status.good { border-color: #166534; color: #86efac; }
+    #status.bad { border-color: #9f1239; color: #fda4af; }
+    .joint { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 9px 0; border-bottom: 1px solid #1e293b; font-size: 13px; }
+    .joint span:last-child { font-variant-numeric: tabular-nums; color: #ddd6fe; }
+    .metric { display: flex; justify-content: space-between; margin: 9px 0; font-size: 13px; }
+    .metric span:last-child { font-variant-numeric: tabular-nums; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .offline { margin-top: 18px; padding: 9px 10px; border-radius: 8px; background: #052e16; color: #86efac; font-size: 12px; }
+    @media (max-width: 980px) {
+      body { overflow: auto; }
+      #app { grid-template-columns: 240px minmax(480px, 1fr); min-width: 900px; }
+      .right { position: absolute; right: 0; top: 0; width: 280px; height: 100vh; background: rgba(15,23,42,.86); }
+      #viewport { margin-right: 280px; }
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/static/three/three.module.js",
+        "three/addons/": "/static/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <aside class="panel left">
+      <h1>SO-101 5DOF IK</h1>
+      <div class="subtitle">底座安装面中心坐标系 · 单位 m</div>
+      <h2>末端目标位置</h2>
+      <div class="field"><label for="target-x"><span>X</span><span>base_footprint</span></label><input id="target-x" type="number" step="0.005"></div>
+      <div class="field"><label for="target-y"><span>Y</span><span>base_footprint</span></label><input id="target-y" type="number" step="0.005"></div>
+      <div class="field"><label for="target-z"><span>Z</span><span>base_footprint</span></label><input id="target-z" type="number" step="0.005"></div>
+      <button id="plan" class="primary">计算 IK 并规划</button>
+      <h2>轨迹播放</h2>
+      <div class="buttons"><button id="play">▶ 播放</button><button id="pause">Ⅱ 暂停</button><button id="reset">↺ 复位</button></div>
+      <div class="field"><input id="timeline" type="range" min="0" max="0" value="0"></div>
+      <div class="hint">左键旋转 · 滚轮缩放 · 右键平移</div>
+      <div class="offline">纯仿真模式：未连接任何机械臂串口</div>
+    </aside>
+
+    <main id="viewport">
+      <canvas id="canvas"></canvas>
+      <div class="axis-legend"><span class="x">+X</span><span class="y">+Y</span><span class="z">+Z</span></div>
+      <div class="viewport-note">紫色球：目标点　青色线：末端轨迹</div>
+    </main>
+
+    <aside class="panel right">
+      <h2>规划状态</h2>
+      <div id="status">正在加载运动学模型……</div>
+      <h2>五关节目标角</h2>
+      <div id="joints"></div>
+      <h2>终点验证</h2>
+      <div class="metric"><span>位置误差</span><span id="error">—</span></div>
+      <div class="metric"><span>IK 迭代次数</span><span id="iterations">—</span></div>
+      <div class="metric"><span>自碰撞检查</span><span id="collision">待规划</span></div>
+      <div class="metric"><span>规划编号</span><span id="plan-id">—</span></div>
+      <div class="metric"><span>当前帧</span><span id="frame">0 / 0</span></div>
+      <h2>末端坐标</h2>
+      <div class="metric"><span>X</span><span id="current-x">—</span></div>
+      <div class="metric"><span>Y</span><span id="current-y">—</span></div>
+      <div class="metric"><span>Z</span><span id="current-z">—</span></div>
+    </aside>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+    const canvas = document.querySelector('#canvas');
+    const viewport = document.querySelector('#viewport');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x020617);
+    renderer.shadowMap.enabled = true;
+
+    THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x020617, 0.7, 1.5);
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 5);
+    camera.up.set(0, 0, 1);
+    camera.position.set(0.88, -0.88, 0.62);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0.17, 0, 0.17);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+
+    scene.add(new THREE.HemisphereLight(0xe0e7ff, 0x172554, 4.0));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 4.5);
+    keyLight.position.set(0.5, -0.4, 0.8);
+    keyLight.castShadow = true;
+    scene.add(keyLight);
+
+    const grid = new THREE.GridHelper(1.2, 24, 0x475569, 0x1e293b);
+    grid.rotation.x = Math.PI / 2;
+    scene.add(grid);
+    scene.add(new THREE.AxesHelper(0.18));
+
+    const robotRoot = new THREE.Group();
+    scene.add(robotRoot);
+    const linkGroups = new Map();
+    const stlLoader = new STLLoader();
+
+    const targetMarker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.012, 24, 16),
+      new THREE.MeshStandardMaterial({ color: 0xa78bfa, emissive: 0x6d28d9, emissiveIntensity: 1.2 })
+    );
+    scene.add(targetMarker);
+    let pathLine = null;
+    let model = null;
+    let planResult = null;
+    let currentAngles = [0, 0, 0, 0, 0];
+    let animationFrame = 0;
+    let playing = false;
+    let lastStepTime = 0;
+
+    function vector(point) { return new THREE.Vector3(point[0], point[1], point[2]); }
+
+    function applyMatrix(object, values) {
+      object.matrixAutoUpdate = false;
+      object.matrix.fromArray(values);
+      object.matrixWorldNeedsUpdate = true;
+    }
+
+    async function loadRobotVisuals(modelPayload) {
+      const jobs = [];
+      const visualCount = Object.values(modelPayload.visuals).reduce((count, items) => count + items.length, 0);
+      let loadedCount = 0;
+      for (const linkName of modelPayload.link_names) {
+        const group = new THREE.Group();
+        group.name = linkName;
+        group.matrixAutoUpdate = false;
+        robotRoot.add(group);
+        linkGroups.set(linkName, group);
+        for (const visual of modelPayload.visuals[linkName] ?? []) {
+          jobs.push((async () => {
+            try {
+              const response = await fetch(visual.mesh_url);
+              if (!response.ok) throw new Error(`HTTP ${response.status}`);
+              const geometry = stlLoader.parse(await response.arrayBuffer());
+              geometry.computeVertexNormals();
+              const [red, green, blue, alpha] = visual.color_rgba;
+              const material = new THREE.MeshStandardMaterial({
+                color: new THREE.Color(red, green, blue),
+                opacity: alpha,
+                transparent: alpha < 1,
+                metalness: 0.18,
+                roughness: 0.58,
+              });
+              const mesh = new THREE.Mesh(geometry, material);
+              mesh.castShadow = true;
+              mesh.receiveShadow = true;
+              applyMatrix(mesh, visual.origin_matrix);
+              mesh.matrix.scale(new THREE.Vector3(...visual.scale));
+              mesh.updateMatrixWorld(true);
+              group.add(mesh);
+              loadedCount += 1;
+              setStatus(`正在加载运动学模型…… ${loadedCount}/${visualCount}`);
+            } catch (error) {
+              throw new Error(`${visual.mesh_url}: ${error.message}`);
+            }
+          })());
+        }
+      }
+      await Promise.all(jobs);
+    }
+
+    function setRobotFrame(points, linkMatrices, angles) {
+      for (const [linkName, values] of Object.entries(linkMatrices)) {
+        const group = linkGroups.get(linkName);
+        if (group) applyMatrix(group, values);
+      }
+      currentAngles = [...angles];
+      const endpoint = points[points.length - 1];
+      document.querySelector('#current-x').textContent = `${endpoint[0].toFixed(4)} m`;
+      document.querySelector('#current-y').textContent = `${endpoint[1].toFixed(4)} m`;
+      document.querySelector('#current-z').textContent = `${endpoint[2].toFixed(4)} m`;
+    }
+
+    function fitCameraToRobot() {
+      robotRoot.updateMatrixWorld(true);
+      const bounds = new THREE.Box3().setFromObject(robotRoot);
+      if (bounds.isEmpty()) return;
+      const center = bounds.getCenter(new THREE.Vector3());
+      const size = bounds.getSize(new THREE.Vector3());
+      const radius = Math.max(size.x, size.y, size.z, 0.2);
+      controls.target.copy(center);
+      camera.position.copy(center).add(new THREE.Vector3(1.4, -1.4, 1.0).normalize().multiplyScalar(radius * 2.8));
+      camera.near = Math.max(radius / 100, 0.001);
+      camera.far = Math.max(radius * 20, 5);
+      camera.updateProjectionMatrix();
+      controls.update();
+    }
+
+    function setStatus(text, kind = '') {
+      const status = document.querySelector('#status');
+      status.textContent = text;
+      status.className = kind;
+    }
+
+    function showJointAngles(angles) {
+      const container = document.querySelector('#joints');
+      container.replaceChildren(...model.joint_names.map((name, index) => {
+        const row = document.createElement('div');
+        row.className = 'joint';
+        const label = document.createElement('span');
+        label.textContent = name;
+        const value = document.createElement('span');
+        value.textContent = `${angles[index].toFixed(2)}°`;
+        row.append(label, value);
+        return row;
+      }));
+    }
+
+    function showPath(frames) {
+      if (pathLine) scene.remove(pathLine);
+      const endpoints = frames.map(frame => vector(frame[frame.length - 1]));
+      const geometry = new THREE.BufferGeometry().setFromPoints(endpoints);
+      pathLine = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0x22d3ee }));
+      scene.add(pathLine);
+    }
+
+    function setTimelineFrame(index) {
+      if (!planResult?.success) return;
+      animationFrame = Math.max(0, Math.min(index, planResult.trajectory_deg.length - 1));
+      setRobotFrame(
+        planResult.trajectory_points_m[animationFrame],
+        planResult.trajectory_link_matrices[animationFrame],
+        planResult.trajectory_deg[animationFrame]
+      );
+      document.querySelector('#timeline').value = animationFrame;
+      document.querySelector('#frame').textContent = `${animationFrame + 1} / ${planResult.trajectory_deg.length}`;
+    }
+
+    async function plan() {
+      const button = document.querySelector('#plan');
+      const target = ['x', 'y', 'z'].map(axis => Number(document.querySelector(`#target-${axis}`).value));
+      if (!target.every(Number.isFinite)) { setStatus('请输入三个有效坐标。', 'bad'); return; }
+      button.disabled = true;
+      playing = false;
+      setStatus('正在计算逆运动学与轨迹……');
+      targetMarker.position.set(...target);
+      try {
+        const response = await fetch('/api/plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_position_m: target, initial_joint_angles_deg: currentAngles })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? '请求失败');
+        planResult = payload;
+        document.querySelector('#error').textContent = `${(payload.error_m * 1000).toFixed(2)} mm`;
+        document.querySelector('#iterations').textContent = payload.iterations;
+        document.querySelector('#plan-id').textContent = payload.plan_id ?? '—';
+        document.querySelector('#collision').textContent = payload.collision_free
+          ? '91 / 91 帧通过'
+          : payload.collision_link_pairs.length
+            ? `第 ${payload.first_collision_frame + 1} 帧：${payload.collision_link_pairs.map(pair => pair.join('/')).join('、')}`
+            : '未生成安全轨迹';
+        showJointAngles(payload.joint_angles_deg);
+        if (!payload.success) { setStatus(payload.message, 'bad'); return; }
+        setStatus(payload.message, 'good');
+        showPath(payload.trajectory_points_m);
+        const timeline = document.querySelector('#timeline');
+        timeline.max = payload.trajectory_deg.length - 1;
+        setTimelineFrame(0);
+      } catch (error) {
+        setStatus(`规划失败：${error.message}`, 'bad');
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function resize() {
+      const width = viewport.clientWidth;
+      const height = viewport.clientHeight;
+      renderer.setSize(width, height, false);
+      camera.aspect = width / Math.max(height, 1);
+      camera.updateProjectionMatrix();
+    }
+
+    function render(time) {
+      resize();
+      if (playing && planResult?.success && time - lastStepTime >= 1000 / 30) {
+        if (animationFrame < planResult.trajectory_deg.length - 1) setTimelineFrame(animationFrame + 1);
+        else playing = false;
+        lastStepTime = time;
+      }
+      controls.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(render);
+    }
+
+    document.querySelector('#plan').addEventListener('click', plan);
+    document.querySelector('#play').addEventListener('click', () => { playing = true; });
+    document.querySelector('#pause').addEventListener('click', () => { playing = false; });
+    document.querySelector('#reset').addEventListener('click', () => { playing = false; setTimelineFrame(0); });
+    document.querySelector('#timeline').addEventListener('input', event => { playing = false; setTimelineFrame(Number(event.target.value)); });
+
+    try {
+      const response = await fetch('/api/model');
+      if (!response.ok) throw new Error(`/api/model: HTTP ${response.status}`);
+      model = await response.json();
+      const initial = model.initial_frame;
+      await loadRobotVisuals(model);
+      setRobotFrame(initial.points, initial.link_matrices, initial.joint_angles_deg);
+      fitCameraToRobot();
+      showJointAngles(initial.joint_angles_deg);
+      const endpoint = initial.end_effector_position_m;
+      const defaultTarget = [endpoint[0] + 0.025, endpoint[1], endpoint[2] + 0.015];
+      ['x', 'y', 'z'].forEach((axis, index) => { document.querySelector(`#target-${axis}`).value = defaultTarget[index].toFixed(4); });
+      targetMarker.position.set(...defaultTarget);
+      setStatus('模型已加载。输入目标坐标后点击“计算 IK 并规划”。', 'good');
+    } catch (error) {
+      setStatus(`模型加载失败：${error.message}`, 'bad');
+    }
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

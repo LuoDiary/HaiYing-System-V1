@@ -30,15 +30,29 @@ URDF_JOINT_NAMES: tuple[str, ...] = (
     "J4_Wrist_Pitch",
     "J5_Wrist_Roll",
 )
+# 必须与 simulation/so-101_description/urdf/so101_arm_macro.urdf.xacro 保持一致。
+# 实机服务独立运行在 LeRobot 环境中，不能在运行时依赖 ROS/xacro 解析限位。
+URDF_JOINT_LIMITS_DEG: dict[str, tuple[float, float]] = {
+    "J1_Rotation": (-89.954, 89.954),
+    "J2_Shoulder_Pitch": (-30.000, 166.158),
+    "J3_Elbow_Pitch": (0.000, 179.909),
+    "J4_Wrist_Pitch": (-89.954, 89.954),
+    "J5_Wrist_Roll": (-179.909, 179.909),
+}
+JOINT_LIMIT_TOLERANCE_DEG = 1.0
+MOVEIT_JOINT_LIMITS_DEG: dict[str, tuple[float, float]] = {
+    name: (lower - JOINT_LIMIT_TOLERANCE_DEG, upper + JOINT_LIMIT_TOLERANCE_DEG)
+    for name, (lower, upper) in URDF_JOINT_LIMITS_DEG.items()
+}
 
 # 现场装配映射。修改后必须同步 config/arm_bridge.yaml，并重新执行小角度验收。
 JOINT_DIRECTIONS: tuple[float, ...] = (1.0, 1.0, -1.0, 1.0, 1.0)
 JOINT_OFFSETS_DEG: tuple[float, ...] = (
-    -6.417582417582418,
+    -0.17582417582417584,
     -0.7472527472527473,
     -0.5274725274725275,
     16.967032967032967,
-    -6.197802197802198,
+    -11.208791208791208,
 )
 
 # Feetech STS3215 实机稳定参数。显式放在项目适配层，避免依赖某台机器上的
@@ -59,7 +73,11 @@ class RobotLike(Protocol):
 
     def get_observation(self) -> dict[str, object]: ...
 
-    def send_action(self, action: dict[str, float]) -> dict[str, float]: ...
+    def send_action(
+        self,
+        action: dict[str, float],
+        max_relative_target: float | None = None,
+    ) -> dict[str, float]: ...
 
 
 @dataclass

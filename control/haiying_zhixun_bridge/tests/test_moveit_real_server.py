@@ -98,16 +98,48 @@ def test_validate_moveit_trajectory_requires_start_state_at_zero_time():
         validate_moveit_trajectory(payload, MoveItRealServerConfig(port=0))
 
 
-def test_validate_moveit_trajectory_auto_stretches_speed_and_rejects_joint_limit():
+def test_validate_moveit_trajectory_accepts_urdf_limits_with_one_degree_tolerance():
     config = MoveItRealServerConfig(port=0, maximum_joint_speed_deg_s=20.0)
     plan = validate_moveit_trajectory(_payload((80.0, 0.0, 0.0, 0.0, 0.0)), config)
     assert plan.time_stretch == pytest.approx(2.0)
     assert plan.duration_s == pytest.approx(4.0)
-    with pytest.raises(ValueError, match="限位"):
-        validate_moveit_trajectory(
-            _payload((90.0, 0.0, 0.0, 0.0, 0.0)),
-            MoveItRealServerConfig(port=0),
-        )
+    upper = validate_moveit_trajectory(
+        _payload((90.954, 167.158, 180.909, 90.954, 180.909)), config
+    )
+    assert upper.target_positions_deg == pytest.approx(
+        (90.954, 167.158, 180.909, 90.954, 180.909)
+    )
+    lower = validate_moveit_trajectory(
+        _payload((-90.954, -31.0, -0.004, -90.954, -180.909)), config
+    )
+    assert lower.target_positions_deg == pytest.approx(
+        (-90.954, -31.0, -0.004, -90.954, -180.909)
+    )
+
+
+@pytest.mark.parametrize(
+    ("joint_index", "target_deg", "joint_name"),
+    (
+        (0, 90.955, "J1_Rotation"),
+        (0, -90.955, "J1_Rotation"),
+        (1, 167.159, "J2_Shoulder_Pitch"),
+        (1, -31.001, "J2_Shoulder_Pitch"),
+        (2, 180.910, "J3_Elbow_Pitch"),
+        (2, -1.001, "J3_Elbow_Pitch"),
+        (3, 90.955, "J4_Wrist_Pitch"),
+        (3, -90.955, "J4_Wrist_Pitch"),
+        (4, 180.910, "J5_Wrist_Roll"),
+        (4, -180.910, "J5_Wrist_Roll"),
+    ),
+)
+def test_validate_moveit_trajectory_rejects_each_joint_outside_urdf_limits(
+    joint_index: int, target_deg: float, joint_name: str
+):
+    target = [0.0] * len(URDF_JOINT_NAMES)
+    target[joint_index] = target_deg
+
+    with pytest.raises(ValueError, match=rf"{joint_name}.*限位"):
+        validate_moveit_trajectory(_payload(tuple(target)), MoveItRealServerConfig(port=0))
 
 
 def test_validate_moveit_trajectory_rejects_excessive_stretch():
@@ -127,7 +159,7 @@ def test_execute_moveit_trajectory_checks_start_then_tracks_feedback():
     real_frames = [map_urdf_angles_to_real(frame) for frame in plan.resampled_positions_deg]
     robot = MagicMock()
     robot.get_observation.side_effect = [_observation(frame) for frame in real_frames]
-    robot.send_action.side_effect = lambda action: action
+    robot.send_action.side_effect = lambda action, **_: action
 
     with patch("haiying_zhixun_bridge.moveit_real_server.time.sleep"):
         result = execute_moveit_trajectory(robot, plan, config)
@@ -135,6 +167,36 @@ def test_execute_moveit_trajectory_checks_start_then_tracks_feedback():
     assert result.execution_completed
     assert result.commanded_frames == len(real_frames) - 1
     assert robot.send_action.call_count == len(real_frames) - 1
+
+
+def test_execute_bypasses_lerobot_relative_target_clipping():
+    config = MoveItRealServerConfig(port=0, execution_rate_hz=10.0)
+    plan = validate_moveit_trajectory(_payload(), config)
+    state = map_urdf_angles_to_real(plan.start_positions_deg)
+    relative_target_overrides: list[float | None] = []
+
+    class TrackingRobot:
+        is_connected = True
+
+        def get_observation(self) -> dict[str, float]:
+            return _observation(state)
+
+        def send_action(
+            self,
+            action: dict[str, float],
+            max_relative_target: float | None = None,
+        ) -> dict[str, float]:
+            relative_target_overrides.append(max_relative_target)
+            for name in JOINT_NAMES:
+                state[name] = action[f"{name}.pos"]
+            return action
+
+    with patch("haiying_zhixun_bridge.moveit_real_server.time.sleep"):
+        result = execute_moveit_trajectory(TrackingRobot(), plan, config)
+
+    assert result.execution_completed
+    assert relative_target_overrides
+    assert set(relative_target_overrides) == {0.0}
 
 
 def test_execute_moveit_trajectory_rejects_start_mismatch_without_motion():
@@ -160,7 +222,7 @@ def test_execute_moveit_trajectory_safely_aligns_start_within_ten_degrees():
     robot = MagicMock()
     robot.get_observation.side_effect = lambda: _observation(state)
 
-    def send_action(action: dict[str, float]) -> dict[str, float]:
+    def send_action(action: dict[str, float], **_: object) -> dict[str, float]:
         for name in JOINT_NAMES:
             state[name] = action[f"{name}.pos"]
         return action
@@ -194,7 +256,7 @@ def test_execute_moveit_trajectory_accepts_small_relative_target_clipping():
     robot = MagicMock()
     robot.get_observation.side_effect = lambda: _observation(state)
 
-    def send_action(action: dict[str, float]) -> dict[str, float]:
+    def send_action(action: dict[str, float], **_: object) -> dict[str, float]:
         sent = dict(action)
         sent["elbow_flex.pos"] -= 0.052
         for name in JOINT_NAMES:
@@ -238,7 +300,7 @@ def test_execute_ignores_one_transient_feedback_outlier():
             observed["wrist_roll"] += 30.0
         return _observation(observed)
 
-    def send_action(action: dict[str, float]) -> dict[str, float]:
+    def send_action(action: dict[str, float], **_: object) -> dict[str, float]:
         for name in JOINT_NAMES:
             state[name] = action[f"{name}.pos"]
         return action
@@ -271,7 +333,7 @@ def test_execute_still_aborts_on_persistent_feedback_error():
             observed["wrist_roll"] += 30.0
         return _observation(observed)
 
-    def send_action(action: dict[str, float]) -> dict[str, float]:
+    def send_action(action: dict[str, float], **_: object) -> dict[str, float]:
         for name in JOINT_NAMES:
             state[name] = action[f"{name}.pos"]
         return action
@@ -350,6 +412,21 @@ def test_http_health_and_validate_are_hardware_free(tmp_path: Path):
     assert health["servo_position_pid"] == [24, 0, 32]
     assert health["servo_acceleration"] == 100
     assert health["servo_dead_zone"] == 5
+    assert health["urdf_joint_limits_deg"] == {
+        "J1_Rotation": [-89.954, 89.954],
+        "J2_Shoulder_Pitch": [-30.0, 166.158],
+        "J3_Elbow_Pitch": [0.0, 179.909],
+        "J4_Wrist_Pitch": [-89.954, 89.954],
+        "J5_Wrist_Roll": [-179.909, 179.909],
+    }
+    assert health["joint_limit_tolerance_deg"] == 1.0
+    assert health["joint_limits_deg"] == {
+        "J1_Rotation": [-90.954, 90.954],
+        "J2_Shoulder_Pitch": [-31.0, 167.158],
+        "J3_Elbow_Pitch": [-1.0, 180.909],
+        "J4_Wrist_Pitch": [-90.954, 90.954],
+        "J5_Wrist_Roll": [-180.909, 180.909],
+    }
     assert validated["validated"]
     assert not validated["hardware_connected"]
 

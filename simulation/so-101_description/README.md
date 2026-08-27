@@ -25,6 +25,10 @@ ros2 launch so-101_description moveit.launch.py
 
 在 RViz 的 **MotionPlanning** 面板选择 `arm`，使用交互标记或目标关节状态后依次点击 **Plan**、**Execute**。执行链路为 MoveIt → `/arm_controller/follow_joint_trajectory` → `joint_trajectory_controller` → `fake_components/GenericSystem`，不再使用自写的假 action 服务。
 
+当前默认速度和加速度缩放均为 `0.2`。五轴顺序固定为
+`J1_Rotation, J2_Shoulder_Pitch, J3_Elbow_Pitch, J4_Wrist_Pitch, J5_Wrist_Roll`，规划组为
+`arm`，根坐标为 `base_footprint`，TCP 为 `end_effector`。
+
 SO-101 只有 5 自由度，任意 6D 末端位姿不一定存在逆解。稳定的自主规划操作方式是：
 
 1. 展开右侧 **MotionPlanning**，进入 **Joints** 页；
@@ -39,7 +43,8 @@ ros2 run so-101_description plan_execute_smoke_test.py
 ```
 
 脚本会向 `/move_action` 发送确定性的五关节目标，并检查规划和
-`/arm_controller/follow_joint_trajectory` 执行结果。
+`/arm_controller/follow_joint_trajectory` 执行结果；脚本同样使用 `0.2` 速度和加速度
+缩放。
 
 ## Gazebo Classic 联调
 
@@ -79,3 +84,10 @@ Gazebo PID 力矩环。动力学、重力补偿和抗扰实验应另建 `effort`
 ```bash
 ros2 launch so-101_description gazebo_moveit.launch.py gui:=false use_rviz:=false
 ```
+
+## 与实机桥接
+
+本包只负责模型、MoveIt 和 Gazebo 轨迹执行，不直接访问 `/dev/ttyACM0`。实机操作必须
+使用 `haiying_zhixun_bridge` 的 GUI：先在 Gazebo 完成同一条轨迹并通过终点验证，再由
+人工确认调用 LeRobot 实机服务。完整步骤见
+[`control/haiying_zhixun_bridge/docs/MOVEIT_REAL_GUI.md`](../../control/haiying_zhixun_bridge/docs/MOVEIT_REAL_GUI.md)。

@@ -46,8 +46,8 @@ class PlanExecuteSmokeTest(Node):
         goal.request.pipeline_id = 'ompl'
         goal.request.num_planning_attempts = 5
         goal.request.allowed_planning_time = 5.0
-        goal.request.max_velocity_scaling_factor = 0.1
-        goal.request.max_acceleration_scaling_factor = 0.1
+        goal.request.max_velocity_scaling_factor = 0.2
+        goal.request.max_acceleration_scaling_factor = 0.2
         goal.request.start_state.is_diff = True
 
         constraints = Constraints()

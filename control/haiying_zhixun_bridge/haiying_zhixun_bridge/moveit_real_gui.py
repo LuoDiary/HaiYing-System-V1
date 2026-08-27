@@ -18,6 +18,7 @@ from sensor_msgs.msg import JointState
 
 from .config import BridgeConfig, load_bridge_config
 from .moveit_bridge import (
+    DEFAULT_EXECUTE_TIMEOUT_S,
     MoveItRealClient,
     MoveItTrajectorySnapshot,
     build_snapshot,
@@ -90,7 +91,11 @@ class MoveItRealGui:
         self.root = root
         self.node = node
         self.config = config
-        self.client = MoveItRealClient(config.moveit_real.server_url, timeout_s=10.0)
+        self.client = MoveItRealClient(
+            config.moveit_real.server_url,
+            timeout_s=10.0,
+            execute_timeout_s=DEFAULT_EXECUTE_TIMEOUT_S,
+        )
         self.results: queue.Queue[
             tuple[Callable[[object], None], object, bool]
         ] = queue.Queue()

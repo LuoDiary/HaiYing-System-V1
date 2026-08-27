@@ -150,7 +150,7 @@ J5 轴 Y → 带动末端执行器绕Y轴回转 (参照 SO-100-arm Wrist_Roll)
       <parent link="${prefix}shoulder"/>
       <child link="${prefix}arm_upper"/>
       <axis xyz="0.99996 -0.000076 0.008726"/>
-      <limit lower="-1.57" upper="1.57" effort="10" velocity="5"/>
+      <limit lower="-0.5236" upper="2.9" effort="10" velocity="5"/>
       <dynamics damping="0.1"/>
     </joint>
 
@@ -190,7 +190,7 @@ J5 轴 Y → 带动末端执行器绕Y轴回转 (参照 SO-100-arm Wrist_Roll)
       <parent link="${prefix}arm_upper"/>
       <child link="${prefix}arm_lower"/>
       <axis xyz="-0.99992 0.008802 -0.008650"/>
-      <limit lower="-1.57" upper="1.57" effort="10" velocity="5"/>
+      <limit lower="0" upper="3.14" effort="10" velocity="5"/>
       <dynamics damping="0.1"/>
     </joint>
 
@@ -278,7 +278,7 @@ J5 轴 Y → 带动末端执行器绕Y轴回转 (参照 SO-100-arm Wrist_Roll)
       <parent link="${prefix}wrist"/>
       <child link="${prefix}gripper_base"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-1.57" upper="1.57" effort="10" velocity="5"/>
+      <limit lower="-3.14" upper="3.14" effort="10" velocity="5"/>
       <dynamics damping="0.1"/>
     </joint>
 

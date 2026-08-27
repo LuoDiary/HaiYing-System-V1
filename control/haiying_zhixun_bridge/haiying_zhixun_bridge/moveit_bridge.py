@@ -16,6 +16,7 @@ URDF_JOINT_NAMES: tuple[str, ...] = (
     "J4_Wrist_Pitch",
     "J5_Wrist_Roll",
 )
+DEFAULT_EXECUTE_TIMEOUT_S = 180.0
 
 
 @dataclass(frozen=True)
@@ -121,7 +122,12 @@ def simulation_endpoint_error_deg(
 
 
 class MoveItRealClient:
-    def __init__(self, server_url: str, timeout_s: float = 5.0):
+    def __init__(
+        self,
+        server_url: str,
+        timeout_s: float = 5.0,
+        execute_timeout_s: float = DEFAULT_EXECUTE_TIMEOUT_S,
+    ):
         parsed = urlparse(server_url)
         if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"}:
             raise ValueError("MoveIt 实机服务只允许本机 HTTP 地址")
@@ -129,8 +135,16 @@ class MoveItRealClient:
             raise ValueError("MoveIt 实机服务地址不能包含路径、查询参数或片段")
         self.server_url = server_url.rstrip("/")
         self.timeout_s = timeout_s
+        self.execute_timeout_s = execute_timeout_s
 
-    def _request(self, path: str, payload: dict[str, object] | None = None) -> dict[str, object]:
+    def _request(
+        self,
+        path: str,
+        payload: dict[str, object] | None = None,
+        *,
+        timeout_s: float | None = None,
+    ) -> dict[str, object]:
+        request_timeout_s = self.timeout_s if timeout_s is None else timeout_s
         request = Request(
             f"{self.server_url}{path}",
             data=None if payload is None else json.dumps(payload).encode("utf-8"),
@@ -138,7 +152,7 @@ class MoveItRealClient:
             method="GET" if payload is None else "POST",
         )
         try:
-            with urlopen(request, timeout=self.timeout_s) as response:
+            with urlopen(request, timeout=request_timeout_s) as response:
                 value = json.load(response)
         except HTTPError as error:
             try:
@@ -162,4 +176,5 @@ class MoveItRealClient:
         return self._request(
             "/api/execute",
             {"trajectory_id": trajectory_id, "confirm_execute": True},
+            timeout_s=self.execute_timeout_s,
         )
