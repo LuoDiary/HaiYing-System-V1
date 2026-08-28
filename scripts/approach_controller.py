@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 """
+============================================================
+  LEGACY 节点 — 已被决策组 mission_fsm_node 正式状态机取代
+============================================================
+  - /system/current_state、/uav/cmd_vel、/arm/target_pose 由
+    mission_fsm_node 唯一发布，最终联合仿真不启动本节点。
+  - 本文件仅作历史参考/单体调试保留，代码不再维护。
+  - 状态集以 FSM 六态为准：SEARCHING / TARGET_FOUND / APPROACHING /
+    BRUSHING / RETURNING / ERROR（本节点自有的 HOVERING 已废弃）。
+
 接近控制器 - 状态机 + 防丢保护 (动作3)
 =========================================
 订阅 /vision/target_point → 计算距离 → 状态机 → /uav/cmd_vel + /system/current_state

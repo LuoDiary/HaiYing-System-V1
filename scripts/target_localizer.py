@@ -38,7 +38,7 @@ from wind_turbine_interfaces.msg import DefectDetectionArray
 
 
 class TargetLocalizer(Node):
-    """2D检测→3D世界坐标转换"""
+    """2D检测→3D世界坐标转换 (仅发布 /vision/target_point; /arm/target_pose 由决策组 mission_fsm_node 发布)"""
 
     def __init__(self):
         super().__init__('target_localizer')
@@ -54,7 +54,6 @@ class TargetLocalizer(Node):
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('camera_frame', 'camera_frame')
         self.declare_parameter('lidar_frame', 'lidar_frame')
-        self.declare_parameter('arm_frame', 'arm_base')
         self.declare_parameter('tf_timeout', 0.2)
 
         use_depth = self.get_parameter('use_depth_camera').value
@@ -97,9 +96,6 @@ class TargetLocalizer(Node):
         # --- 发布 ---
         self.target_pub = self.create_publisher(
             PointStamped, '/vision/target_point', 10)
-        # 动作2: 机械臂目标位姿 (PoseStamped, arm_base坐标系)
-        self.arm_target_pub = self.create_publisher(
-            PoseStamped, '/arm/target_pose', 10)
 
         # --- 发布相机-LiDAR标定TF ---
         self._publish_calibration_tf()
@@ -194,31 +190,6 @@ class TargetLocalizer(Node):
             target.point.y = wy
             target.point.z = wz
             self.target_pub.publish(target)
-
-            # --- 动作1: TF转换 world→arm_base ---
-            world_to_arm = self._lookup_tf(
-                self.get_parameter('arm_frame').value,
-                self.get_parameter('world_frame').value)
-            if world_to_arm is None:
-                continue
-            point_arm = world_to_arm @ np.array([wx, wy, wz, 1.0])
-            ax, ay, az = float(point_arm[0]), float(point_arm[1]), float(point_arm[2])
-
-            # --- 动作2: 合成PoseStamped → /arm/target_pose ---
-            arm_pose = PoseStamped()
-            arm_pose.header.stamp = self.get_clock().now().to_msg()
-            arm_pose.header.frame_id = self.get_parameter('arm_frame').value
-            arm_pose.pose.position.x = ax
-            arm_pose.pose.position.y = ay
-            arm_pose.pose.position.z = az
-
-            # 刷子垂直风机墙面: 墙面为YZ平面(法线+X), 工具Z轴指向墙面(-X方向)
-            # 四元数: 绕Y轴转180° = (0, 1, 0, 0) 使工具Z轴朝后(-X)
-            arm_pose.pose.orientation.x = 0.0
-            arm_pose.pose.orientation.y = 1.0
-            arm_pose.pose.orientation.z = 0.0
-            arm_pose.pose.orientation.w = 0.0
-            self.arm_target_pub.publish(arm_pose)
 
     # ---- 工具 ----
 
