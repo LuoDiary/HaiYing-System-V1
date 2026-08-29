@@ -44,6 +44,19 @@ SAFETY_NORMAL = 'NORMAL'
 SAFETY_HOLD = 'HOLD'
 SAFETY_SWITCHED = 'SWITCHED'
 
+HEARTBEAT_TIMEOUT = 3.0
+TELEMETRY_TIMEOUT = 1.0
+
+
+def _ned_to_enu(p):
+    return [p[1], p[0], -p[2]]
+
+
+def _quat_ned_to_enu(q):
+    a = 0.7071067811865476
+    w, x, y, z = q
+    return [a * (y - x), a * (w - z), a * (w + z), -a * (x + y)]
+
 
 class AttitudeCmdNode(Node):
 
@@ -88,6 +101,9 @@ class AttitudeCmdNode(Node):
         self._cmd_state = 'ACTIVE'
         self._cmd_state_time = time.time()
         self._att_quat = [1.0, 0.0, 0.0, 0.0]
+        self._last_heartbeat = 0.0
+        self._last_pos = 0.0
+        self._err_published = False
 
         data_dir = Path(self.get_parameter('data_dir').value)
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -120,6 +136,7 @@ class AttitudeCmdNode(Node):
         self._vel_pub = self.create_publisher(Float32MultiArray, 'vehicle_velocity', 1)
         self._pose_pub = self.create_publisher(PoseStamped, 'mavros/local_position/pose', 1)
         self._drift_pub = self.create_publisher(Float32, 'hover_drift', 1)
+        self._sys_state_pub = self.create_publisher(String, 'system/current_state', 10)
 
         self._setpoint_timer = self.create_timer(1.0 / self._rate, self._send_setpoint)
         self._hb_timer = self.create_timer(0.5, self._send_heartbeat)
@@ -152,14 +169,24 @@ class AttitudeCmdNode(Node):
         else:
             q = self._setpoint[0:4]
             thrust = float(self._setpoint[4])
-        self._mav.mav.set_attitude_target_send(
-            int(time.time() * 1000) % 2**32,
-            self._sysid,
-            self._compid,
-            TYPEMASK_IGNORE_RATES,
-            q,
-            0.0, 0.0, 0.0,
-            thrust)
+        try:
+            self._mav.mav.set_attitude_target_send(
+                int(time.time() * 1000) % 2**32,
+                self._sysid,
+                self._compid,
+                TYPEMASK_IGNORE_RATES,
+                q,
+                0.0, 0.0, 0.0,
+                thrust)
+        except Exception as e:
+            self.get_logger().error(f'attitude setpoint send failed: {e}')
+            self._report_error()
+
+    def _report_error(self):
+        if not self._err_published:
+            self._sys_state_pub.publish(String(data='ERROR'))
+            self._err_published = True
+            self.get_logger().warn('fault: published /system/current_state=ERROR')
 
     def _on_cmd_state(self, msg):
         self._cmd_state = msg.data
@@ -205,12 +232,23 @@ class AttitudeCmdNode(Node):
 
     def _safety_check(self):
         now = time.time()
-        if self._cmd_state == 'HOLD':
+        if self._cmd_state in ('HOLD', 'FAULT'):
             self._enter_safety_hold()
         elif now - self._cmd_state_time > self._cmd_state_timeout:
             self.get_logger().warn('cmd_state lost, entering safety hold')
             self._cmd_state = 'HOLD'
             self._enter_safety_hold()
+        if self._last_heartbeat > 0.0 and now - self._last_heartbeat > HEARTBEAT_TIMEOUT:
+            if not self._err_published:
+                self.get_logger().warn('MAVLink heartbeat lost')
+            self._report_error()
+        elif self._last_pos > 0.0 and now - self._last_pos > TELEMETRY_TIMEOUT:
+            if not self._err_published:
+                self.get_logger().warn('telemetry (LOCAL_POSITION_NED) timeout')
+            self._report_error()
+        elif self._err_published:
+            self._err_published = False
+            self.get_logger().info('fault cleared')
         if self._safety == SAFETY_HOLD and now - self._safety_entered > self._hold_timeout:
             if self._mode_action == 1:
                 self._switch_mode(PX4_MAIN_MODE_AUTO, PX4_SUB_MODE_AUTO_LOITER)
@@ -265,6 +303,7 @@ class AttitudeCmdNode(Node):
                 continue
             mtype = msg.get_type()
             if mtype == 'HEARTBEAT':
+                self._last_heartbeat = time.time()
                 self._armed = bool(msg.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
                 self._mode = PX4_MODES.get(msg.custom_mode >> 16, 'unknown')
                 state = f'armed={self._armed} mode={self._mode}'
@@ -288,6 +327,7 @@ class AttitudeCmdNode(Node):
                 self._vib_fh.flush()
             elif mtype == 'LOCAL_POSITION_NED':
                 stamp = self.get_clock().now().to_msg()
+                self._last_pos = time.time()
                 point = Point(x=float(msg.x), y=float(msg.y), z=float(msg.z))
                 self._pos_pub.publish(PointStamped(
                     header=Header(stamp=stamp, frame_id='local_origin_ned'),
@@ -295,18 +335,26 @@ class AttitudeCmdNode(Node):
                 self._vel_pub.publish(Float32MultiArray(
                     data=[float(msg.vx), float(msg.vy), float(msg.vz)]))
                 q = self._att_quat
+                pe = _ned_to_enu([float(msg.x), float(msg.y), float(msg.z)])
+                qe = _quat_ned_to_enu(q)
                 self._pose_pub.publish(PoseStamped(
                     header=Header(stamp=stamp, frame_id='map'),
-                    pose=Pose(position=point, orientation=Quaternion(
-                        x=q[1], y=q[2], z=q[3], w=q[0]))))
+                    pose=Pose(position=Point(x=pe[0], y=pe[1], z=pe[2]),
+                              orientation=Quaternion(
+                                  x=qe[1], y=qe[2], z=qe[3], w=qe[0]))))
                 drift = math.hypot(float(msg.x), float(msg.y))
                 self._drift_pub.publish(Float32(data=drift))
                 self._pos_writer.writerow([time.time(), msg.time_boot_ms,
                                            float(msg.x), float(msg.y), float(msg.z)])
                 self._pos_fh.flush()
             elif mtype == 'COMMAND_ACK':
-                self.get_logger().info(
-                    f'COMMAND_ACK cmd={msg.command} result={msg.result}')
+                if msg.result != 0:
+                    self.get_logger().error(
+                        f'COMMAND_ACK cmd={msg.command} result={msg.result}')
+                    self._report_error()
+                else:
+                    self.get_logger().info(
+                        f'COMMAND_ACK cmd={msg.command} result={msg.result}')
 
     def destroy_node(self):
         self._running = False

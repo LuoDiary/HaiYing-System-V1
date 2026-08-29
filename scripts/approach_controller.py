@@ -172,11 +172,18 @@ class ApproachController(Node):
         self.state_pub.publish(msg)
 
     def _publish_cmd_vel(self, vx: float, vy: float, vz: float, yaw_rate: float):
+        """发布 /uav/cmd_vel(正式契约: NED 系)。
+
+        本控制器输入(/vision/target_point 与 /mavros/local_position/pose)
+        为 world/ENU 系, 发布前转换为 NED:
+            v_ned = (v_enu.y, v_enu.x, -v_enu.z)
+            wz_ned = -wz_enu
+        """
         msg = Twist()
-        msg.linear.x = vx
-        msg.linear.y = vy
-        msg.linear.z = vz
-        msg.angular.z = yaw_rate
+        msg.linear.x = vy
+        msg.linear.y = vx
+        msg.linear.z = -vz
+        msg.angular.z = -yaw_rate
         self.cmd_vel_pub.publish(msg)
 
 

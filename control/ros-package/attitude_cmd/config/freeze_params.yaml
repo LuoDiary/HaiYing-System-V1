@@ -1,0 +1,24 @@
+attitude_cmd_node:
+  ros__parameters:
+    port: "udpin:14550"
+    baud: 57600
+    target_system: 1
+    target_component: 1
+    rate: 50
+    data_dir: "/home/luodiary/.px4_viz"
+    hover_thrust: 0.5
+    hold_mode_timeout: 3.0
+    error_mode_action: 1
+    cmd_state_timeout: 5.0
+
+cmd_vel_to_attitude:
+  ros__parameters:
+    rate: 50
+    cmd_vel_timeout: 3.0
+    vel_gain: 1.8
+    max_accel: 2.0
+    max_tilt: 0.5
+    hover_thrust: 0.5
+    thrust_min: 0.1
+    thrust_max: 0.9
+    vel_feedback_timeout: 1.0
