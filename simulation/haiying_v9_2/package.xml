@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>haiying_v9_2</name>
+  <version>9.2.0</version>
+  <description>HaiYing V9.2 UAV, SO-101 arm, camera and LiDAR Gazebo integration model.</description>
+
+  <maintainer email="zjw315@users.noreply.github.com">HaiYing Simulation Team</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>arm_uav_joint</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>gazebo_ros</exec_depend>
+  <exec_depend>gazebo_ros2_control</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>joint_trajectory_controller</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>so-101_description</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>xacro</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

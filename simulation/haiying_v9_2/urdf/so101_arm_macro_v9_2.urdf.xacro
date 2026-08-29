@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+SO-101 5自由度机械臂 URDF 宏定义
+
+串行运动学链 (5DOF, 参照 SO-100-arm 模式):
+  base_footprint
+    → [方向修正] → base_link              (底座)
+      → [J1, yaw(Z)] → shoulder          (肩部: 舵机0+舵机1)
+        → [J2, pitch] → arm_upper         (大臂: 舵机2)
+          → [J3, pitch] → arm_lower       (小臂: 舵机3)
+            → [J4, pitch] → wrist         (腕部: 舵机4 part_089)
+              → [J5, roll(Y)] → gripper_base (末端执行器, 绕Y轴回转)
+                → end_effector (TCP)
+
+舵机布局 (共5个, 每个关节一个):
+  舵机0+1 (part_085+086): shoulder 内 — 同轴设计, 驱动 J1+J2
+  舵机2  (part_087): arm_upper 内 — 驱动 J3
+  舵机3  (part_088): arm_lower 内 — 驱动 J4
+  舵机4  (part_089): wrist 内 — 驱动 J5, 放在腕部空缺处
+
+J1 轴 Y → world Z (经 base_footprint rpy=-1.57 旋转)
+J5 轴 Y → 带动末端执行器绕Y轴回转 (参照 SO-100-arm Wrist_Roll)
+
+参照 SO-100-arm: Wrist_Roll 从 Wrist_Pitch_Roll 直接到 Fixed_Gripper
+  origin: xyz="0 -0.0601 0" rpy="0 1.57079 0"
+  axis:   xyz="0 1 0"
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="so101_arm" params="prefix:=''">
+    <xacro:property name="body" value="package://so-101_description/urdf/so101_urdf/meshes"/>
+    <xacro:property name="grip" value="package://so-101_description/urdf/end_effector_urdf/meshes"/>
+
+    <!-- ===== base_footprint: 世界根节点 ===== -->
+    <link name="${prefix}base_footprint"/>
+
+    <!-- rpy="-1.5708 0 0" 使臂体从 CAD 水平转为竖直站立
+         base_link Y → world -Z, base_link Z → world Y
+         J1 轴用 base_link Y → world Z (yaw) -->
+    <joint name="${prefix}base_orientation_joint" type="fixed">
+      <origin xyz="0 0.038055 0.045" rpy="-1.5707963 0 0"/>
+      <parent link="${prefix}base_footprint"/>
+      <child link="${prefix}base_link"/>
+    </joint>
+
+    <!-- ============================================ -->
+    <!-- base_link (CAD: base_link) — 底座              -->
+    <!-- ============================================ -->
+    <link name="${prefix}base_link">
+      <inertial>
+        <origin xyz="-0.0000096 0.014495 0.012489" rpy="0 0 0"/>
+        <mass value="0.14723"/>
+        <inertia ixx="0.00013418" iyy="0.00017400" izz="0.00016382"
+                 ixy="-0.00000001" ixz="0.00000004" iyz="0.00002337"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0.036394 -0.010422" rpy="1.5707963 0 0"/>
+        <geometry>
+          <mesh filename="${body}/part_001_Wiring_holder_v1.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="so101_dark"><color rgba="0.3 0.3 0.35 1.0"/></material>
+      </visual>
+      <collision>
+        <origin xyz="0 0.036394 -0.010422" rpy="1.5707963 0 0"/>
+        <geometry>
+          <mesh filename="${body}/part_001_Wiring_holder_v1.stl" scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- ============================================ -->
+    <!-- shoulder (CAD: Rotation_Pitch) — 肩部          -->
+    <!-- 嵌入舵机 mesh: part_086(舵机1) + part_085(舵机0)  -->
+    <!-- 原始CAD: driver_1 和 driver_0 均在 [0,0,0] 叠加   -->
+    <!-- ============================================ -->
+    <link name="${prefix}shoulder">
+      <inertial>
+        <origin xyz="-0.000258 -0.058004 -0.038910" rpy="0 0 0"/>
+        <mass value="0.082067"/>
+        <inertia ixx="0.00005789" iyy="0.00002429" izz="0.00005184"
+                 ixy="-0.00000041" ixz="-0.00000001" iyz="-0.00000557"/>
+      </inertial>
+      <!-- 肩部主体 -->
+      <visual>
+        <origin xyz="0 0 0" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_002_Wiring_holder_v1_1.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="so101_dark"><color rgba="0.3 0.3 0.35 1.0"/></material>
+      </visual>
+      <!-- 舵机1 (part_086): driver_1_joint origin [0,0,0] from shoulder -->
+      <visual>
+        <origin xyz="0 0 0" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_086_1653192640.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="servo_grey"><color rgba="0.5 0.5 0.5 1.0"/></material>
+      </visual>
+      <!-- 舵机0 (part_085): driver_0_joint origin [0,0,0] from driver_1 = 同位置叠加 -->
+      <visual>
+        <origin xyz="0 0 0" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_085_Extruded_1.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="servo_grey"><color rgba="0.5 0.5 0.5 1.0"/></material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_002_Wiring_holder_v1_1.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- J1: 底座 → 肩部 (yaw). 轴=Y 使经 base_footprint 旋转后绕世界 Z -->
+    <joint name="${prefix}J1_Rotation" type="revolute">
+      <origin xyz="0 0.036394 -0.010422" rpy="0 0 0"/>
+      <parent link="${prefix}base_link"/>
+      <child link="${prefix}shoulder"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="-1.57" upper="1.57" effort="10" velocity="5"/>
+      <dynamics damping="0.1"/>
+    </joint>
+
+    <!-- ============================================ -->
+    <!-- arm_upper (CAD: under_arm) — 大臂              -->
+    <!-- 嵌入舵机 mesh: part_087(舵机2)                   -->
+    <!-- CAD: driver_2_joint origin [0.0237,0.1198,0.0389] -->
+    <!-- ============================================ -->
+    <link name="${prefix}arm_upper">
+      <inertial>
+        <origin xyz="0.025164 -0.000131 0.060915" rpy="0 0 0"/>
+        <mass value="0.14017"/>
+        <inertia ixx="0.00017080" iyy="0.00021880" izz="0.00006087"
+                 ixy="-0.00000006" ixz="0.00000255" iyz="-0.00000104"/>
+      </inertial>
+      <!-- 大臂主体 -->
+      <visual>
+        <origin xyz="0.023656 0.119757 0.038947" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_003_Wiring_holder_v1_1.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="so101_mid"><color rgba="0.25 0.35 0.45 1.0"/></material>
+      </visual>
+      <!-- 舵机2 (part_087): 在 driver_2_joint 处 [0.0237,0.1198,0.0389] -->
+      <visual>
+        <origin xyz="0.023656 0.119757 0.038947" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_087_736125216.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="servo_grey"><color rgba="0.5 0.5 0.5 1.0"/></material>
+      </visual>
+      <collision>
+        <origin xyz="0.023656 0.119757 0.038947" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_003_Wiring_holder_v1_1.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- J2: 肩部 → 大臂 (shoulder pitch) -->
+    <joint name="${prefix}J2_Shoulder_Pitch" type="revolute">
+      <origin xyz="-0.023656 -0.119757 -0.038947" rpy="0 0 0"/>
+      <parent link="${prefix}shoulder"/>
+      <child link="${prefix}arm_upper"/>
+      <axis xyz="0.99996 -0.000076 0.008726"/>
+      <limit lower="-0.5236" upper="2.9" effort="10" velocity="5"/>
+      <dynamics damping="0.1"/>
+    </joint>
+
+    <!-- ============================================ -->
+    <!-- arm_lower (CAD: upper_arm) — 小臂              -->
+    <!-- 嵌入舵机 mesh: part_088(舵机3)                   -->
+    <!-- CAD: driver_3_joint origin [0.0139,0.1485,-0.0736] -->
+    <!-- ============================================ -->
+    <link name="${prefix}arm_lower">
+      <inertial>
+        <origin xyz="0.017605 0.000673 -0.056114" rpy="0 0 0"/>
+        <mass value="0.11085"/>
+        <inertia ixx="0.00010673" iyy="0.00014075" izz="0.00004415"
+                 ixy="0.00000023" ixz="0.00000165" iyz="0.00000278"/>
+      </inertial>
+      <!-- 小臂主体 -->
+      <visual>
+        <origin xyz="0.013895 0.148458 -0.073566" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_004_Wiring_holder_v1_2.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="so101_light"><color rgba="0.35 0.45 0.55 1.0"/></material>
+      </visual>
+      <!-- 舵机3 (part_088): 驱动 J4, 在 driver_3_joint 处 -->
+      <visual>
+        <origin xyz="0.013895 0.148458 -0.073566" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_088_1653192640_1.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="servo_grey"><color rgba="0.5 0.5 0.5 1.0"/></material>
+      </visual>
+      <collision>
+        <origin xyz="0.013895 0.148458 -0.073566" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_004_Wiring_holder_v1_2.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- J3: 大臂 → 小臂 (elbow pitch) -->
+    <joint name="${prefix}J3_Elbow_Pitch" type="revolute">
+      <origin xyz="0.009761 -0.028701 0.112513" rpy="0 0 0"/>
+      <parent link="${prefix}arm_upper"/>
+      <child link="${prefix}arm_lower"/>
+      <axis xyz="-0.99992 0.008802 -0.008650"/>
+      <limit lower="0" upper="3.14" effort="10" velocity="5"/>
+      <dynamics damping="0.1"/>
+    </joint>
+
+    <!-- ============================================ -->
+    <!-- wrist (CAD: Wrist_Roll_Pitch) — 腕部           -->
+    <!-- J4 控制, 内含舵机4 (part_089) 在腕部空缺处        -->
+    <!-- 参照 SO-100-arm Wrist_Pitch_Roll               -->
+    <!-- ============================================ -->
+    <link name="${prefix}wrist">
+      <inertial>
+        <origin xyz="0.001941 -0.000195 -0.027095" rpy="0 0 0"/>
+        <mass value="0.037719"/>
+        <inertia ixx="0.00001646" iyy="0.00002939" izz="0.00001966"
+                 ixy="0.00000022" ixz="0.00000233" iyz="-0.00000011"/>
+      </inertial>
+      <!-- 腕部主体 -->
+      <visual>
+        <origin xyz="-0.005534 0.152613 0.060418" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_008_Wiring_holder_v1_1__2.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="so101_light"><color rgba="0.35 0.45 0.55 1.0"/></material>
+      </visual>
+      <!-- 舵机4 (part_089): J5 驱动舵机, 放在腕部空缺处, 类似 SO-100-arm 的 wrist 舵机 -->
+      <visual>
+        <origin xyz="-0.005534 0.152613 0.060418" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_089_1653192640_2.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="servo_grey"><color rgba="0.5 0.5 0.5 1.0"/></material>
+      </visual>
+      <collision>
+        <origin xyz="-0.005534 0.152613 0.060418" rpy="1.5707963 0 0"/>
+        <geometry><mesh filename="${body}/part_008_Wiring_holder_v1_1__2.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- J4: 小臂 → 腕部 (wrist pitch) -->
+    <joint name="${prefix}J4_Wrist_Pitch" type="revolute">
+      <origin xyz="0.019429 -0.004155 -0.133983" rpy="0 0 0"/>
+      <parent link="${prefix}arm_lower"/>
+      <child link="${prefix}wrist"/>
+      <axis xyz="0.99854 -0.044303 0.030973"/>
+      <limit lower="-1.57" upper="1.57" effort="10" velocity="5"/>
+      <dynamics damping="0.1"/>
+    </joint>
+
+    <!-- ============================================ -->
+    <!-- J5: 腕部 → 末端执行器 (wrist roll, Y轴回转)      -->
+    <!-- 参照 SO-100-arm Wrist_Roll:                    -->
+    <!--   origin: xyz="0 -0.0601 0" rpy="0 1.57079 0" -->
+    <!--   axis: xyz="0 1 0"                           -->
+    <!-- 第5个舵机驱动末端执行器绕Y轴旋转                     -->
+    <!-- ============================================ -->
+
+    <!-- ============================================ -->
+    <!-- gripper_base — 末端执行器夹爪                    -->
+    <!-- 原始CAD rpy="1.5708 0 0"→先绕X-90°(rpy=0),     -->
+    <!-- 再绕Z逆时针90° (rpy="0 0 1.5708")               -->
+    <!-- ============================================ -->
+    <link name="${prefix}gripper_base">
+      <inertial>
+        <origin xyz="-0.000942 -0.005227 -0.000001" rpy="0 0 0"/>
+        <mass value="0.053358"/>
+        <inertia ixx="0.00003626" iyy="0.00001901" izz="0.00003788"
+                 ixy="-0.00000155" ixz="-0.00000000" iyz="-0.00000000"/>
+      </inertial>
+      <!-- 夹爪主体: 绕Z逆时针90° + 原始CAD rpy补偿 -->
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 1.5707963"/>
+        <geometry><mesh filename="${grip}/part_002_solid_002.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="gripper_dark"><color rgba="0.2 0.25 0.3 1.0"/></material>
+      </visual>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 1.5707963"/>
+        <geometry><mesh filename="${grip}/part_001_solid_001.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="gripper_light"><color rgba="0.25 0.3 0.35 1.0"/></material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 1.5707963"/>
+        <geometry><mesh filename="${grip}/part_002_solid_002.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+    </link>
+
+    <!-- J5: wrist → gripper_base, 绕Y轴回转, 参照 SO-100-arm Wrist_Roll
+         末端执行器平移到第5个舵机(part_089)右侧 (wrist X+) -->
+    <joint name="${prefix}J5_Wrist_Roll" type="revolute">
+      <origin xyz="0 0 -0.059" rpy="0 0 0"/>
+      <parent link="${prefix}wrist"/>
+      <child link="${prefix}gripper_base"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="-3.14" upper="3.14" effort="10" velocity="5"/>
+      <dynamics damping="0.1"/>
+    </joint>
+
+    <!-- ============================================ -->
+    <!-- end_effector — 工具点 (TCP)                    -->
+    <!-- ============================================ -->
+    <link name="${prefix}end_effector">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry><box size="0.01 0.01 0.01"/></geometry>
+        <material name="red"><color rgba="1.0 0.0 0.0 1.0"/></material>
+      </visual>
+    </link>
+
+    <!-- TCP 沿夹爪开口方向 -->
+    <joint name="${prefix}end_effector_joint" type="fixed">
+      <parent link="${prefix}gripper_base"/>
+      <child link="${prefix}end_effector"/>
+      <origin xyz="0 0 -0.05" rpy="0 0 0"/>
+    </joint>
+
+  </xacro:macro>
+</robot>

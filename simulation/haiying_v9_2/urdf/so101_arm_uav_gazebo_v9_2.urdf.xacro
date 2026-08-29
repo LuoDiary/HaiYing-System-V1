@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<!-- Gazebo Classic 专用包装层；机械臂的几何与运动学定义保持在 so101_arm_macro.urdf.xacro。 -->
+<robot name="so101_arm" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="prefix" default=""/>
+
+  <xacro:include filename="$(find haiying_v9_2)/urdf/so101_arm_macro_v9_2.urdf.xacro"/>
+  <xacro:so101_arm prefix="$(arg prefix)"/>
+
+  <ros2_control name="GazeboSystem" type="system">
+    <hardware>
+      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+    </hardware>
+    <joint name="$(arg prefix)J1_Rotation"><command_interface name="position"/><state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/></joint>
+    <joint name="$(arg prefix)J2_Shoulder_Pitch"><command_interface name="position"/><state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/></joint>
+    <joint name="$(arg prefix)J3_Elbow_Pitch"><command_interface name="position"/><state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/></joint>
+    <joint name="$(arg prefix)J4_Wrist_Pitch"><command_interface name="position"/><state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/></joint>
+    <joint name="$(arg prefix)J5_Wrist_Roll"><command_interface name="position"/><state_interface name="position"/><state_interface name="velocity"/><state_interface name="effort"/></joint>
+  </ros2_control>
+
+  <!-- 基座不受重力影响；各活动连杆仍在重力下由 position 控制器保持。 -->
+  <gazebo reference="$(arg prefix)base_footprint"><gravity>false</gravity></gazebo>
+  <gazebo reference="$(arg prefix)J1_Rotation"><provideFeedback>true</provideFeedback></gazebo>
+  <gazebo reference="$(arg prefix)J2_Shoulder_Pitch"><provideFeedback>true</provideFeedback></gazebo>
+  <gazebo reference="$(arg prefix)J3_Elbow_Pitch"><provideFeedback>true</provideFeedback></gazebo>
+  <gazebo reference="$(arg prefix)J4_Wrist_Pitch"><provideFeedback>true</provideFeedback></gazebo>
+  <gazebo reference="$(arg prefix)J5_Wrist_Roll"><provideFeedback>true</provideFeedback></gazebo>
+
+  <gazebo>
+    <!-- 使用 package 路径，避免用户环境遗漏 GAZEBO_PLUGIN_PATH 时插件静默未加载。 -->
+    <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
+      <robot_param>robot_description</robot_param>
+      <robot_param_node>robot_state_publisher</robot_param_node>
+      <hold_joints>true</hold_joints>
+      <parameters>$(find so-101_description)/config/ros2_controllers.yaml</parameters>
+    </plugin>
+  </gazebo>
+</robot>
