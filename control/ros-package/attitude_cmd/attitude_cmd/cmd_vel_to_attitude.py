@@ -125,7 +125,7 @@ class CmdVelToAttitude(Node):
 
         self._sp_pub = self.create_publisher(Float32MultiArray, 'attitude_setpoint', 1)
         self._state_pub = self.create_publisher(String, 'uav/cmd_state', 1)
-        self._sys_state_pub = self.create_publisher(String, 'system/current_state', 10)
+        self._sys_state_pub = self.create_publisher(String, 'uav/flight_fault', 10)
 
         self._timer = self.create_timer(1.0 / self._rate, self._update)
 
@@ -134,7 +134,7 @@ class CmdVelToAttitude(Node):
             self._sys_state_pub.publish(String(data='ERROR'))
             self._err_published = True
             self.get_logger().error('invalid /uav/cmd_vel rejected, '
-                                    'published /system/current_state=ERROR')
+                                    'published /uav/flight_fault=ERROR')
 
     def _on_cmd_vel(self, msg):
         vals = [msg.linear.x, msg.linear.y, msg.linear.z,
