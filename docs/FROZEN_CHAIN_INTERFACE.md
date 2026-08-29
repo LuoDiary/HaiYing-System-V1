@@ -213,8 +213,42 @@ pymavlink 与发行版无关)。在 Humble 上的预期差异仅为 `colcon buil
 
 ---
 
+
+## 输入校验与故障语义(修订 V1.1,2026-08-29)
+
+发现并修复确定性安全缺陷(隔离 DDS 稳态测试证据:
+/home/zoey/haiying_received/cmd_vel_to_attitude_synchronized_v2_20260829.txt,
+SHA256 582c1a154546bf71ef54c27c339ce6c26959344da6314c2da34a9e704d49b6a5):
+NaN 指令曾被当作有效指令,cmd_state=ACTIVE 且 ttitude_setpoint 含非有限值。
+**修复前该转换节点不得接入 PX4 或正式 V9.2 启动器**(现修复已完成并验证)。
+
+正式修复规则(已确认并实现于 cmd_vel_to_attitude.py):
+
+1. /uav/cmd_vel 六个字段(linear.x/y/z、angular.x/y/z)任一为 NaN/±Inf
+   → **立即拒绝**(不更新 _vel_cmd/_yaw_rate);
+2. **不刷新有效指令时间戳**(_last_cmd 保持上次有效值);
+3. 立即输出**有限水平悬停设定值** [1,0,0,0, hover_thrust] 并发布
+   cmd_state=HOLD;
+4. /vehicle_velocity 含 NaN/±Inf 或字段数 ≠ 3 → **拒绝**(不更新估计与
+   时间戳;连续超时 1 s 后走既有 FAULT 阶梯);
+5. **是,需要独立上报**: 拒绝时经 /system/current_state 发布 ERROR
+   (每轮事件一次,收到有效指令后静默复位);
+6. 自动测试: 	est/test_cmd_vel_to_attitude.py(pytest,27 项)覆盖
+   NaN/+Inf/-Inf × 6 字段、异常反馈(值非法/长度非法)、时间倒退
+   (单调时钟注入)、限幅有限性与 HOLD/ERROR/恢复语义。
+
+附加加固(同轮实施): ttitude_cmd_node::_on_setpoint 拒绝非有限
+/attitude_setpoint(忽略 + 上报 ERROR + 进入 SAFETY_HOLD),保证链路层不向
+MAVLink 转发非有限值。计时基准统一为 	ime.monotonic()(注入式,测试可模拟
+时间倒退;墙钟回拨不再影响超时判定)。
+
+验证(Jazzy 实测): 有效指令 ACTIVE → NaN 指令 HOLD + [1,0,0,0,0.5] +
+/system/current_state=ERROR(一次) → 有效指令恢复 ACTIVE;链路对端仅收到
+有限设定值(0 个 nan/inf)。单元测试 27/27 通过。
+
 ## 修订记录
 
 | 日期 | 内容 |
 |---|---|
 | 2026-08-28 | V1.0: 冻结坐标系(cmd_vel=NED, pose=ENU)、FAULT 语义、ERROR 上报职责表、launch+params、超时阶梯、端口规则、实测记录 |
+| 2026-08-29 | V1.1: NaN/Inf 指令拒绝(HOLD+ERROR)、反馈校验、单调时钟、链路层设定值守卫、自动化测试(27 项) |

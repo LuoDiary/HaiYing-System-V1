@@ -158,6 +158,11 @@ class AttitudeCmdNode(Node):
             self.get_logger().warn(
                 f'attitude_setpoint needs 5 floats [qw qx qy qz thrust], got {len(data)}')
             return
+        if not all(math.isfinite(float(v)) for v in data):
+            self.get_logger().warn('attitude_setpoint contains non-finite values, rejected')
+            self._report_error()
+            self._enter_safety_hold()
+            return
         self._setpoint = list(data)
 
     def _send_setpoint(self):
