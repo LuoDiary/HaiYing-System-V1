@@ -137,20 +137,19 @@ class CmdVelToAttitude(Node):
 
         if now - self._last_cmd > self._cmd_timeout:
             self._state = 'HOLD'
+        elif now - self._vel_est_time > self._vel_fb_timeout:
+            if not self._fb_warned:
+                self.get_logger().warn(
+                    'velocity feedback stale, entering FAULT')
+                self._fb_warned = True
+            self._state = 'FAULT'
         else:
             self._state = 'ACTIVE'
 
-        if self._state == 'HOLD':
+        if self._state != 'ACTIVE':
             setpoint = self._hold_setpoint()
         else:
-            if now - self._vel_est_time > self._vel_fb_timeout:
-                if not self._fb_warned:
-                    self.get_logger().warn(
-                        'velocity feedback stale, using zero estimate')
-                    self._fb_warned = True
-                v_est = [0.0, 0.0, 0.0]
-            else:
-                v_est = self._vel_est
+            v_est = self._vel_est
 
             a_des = [
                 self._gain * (self._vel_cmd[0] - v_est[0]),
