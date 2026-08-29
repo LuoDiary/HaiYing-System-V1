@@ -72,9 +72,17 @@ def bodyz_to_quat(body_z, yaw):
     return _quat_from_matrix(m)
 
 
+def _finite_cmd(vals):
+    return all(math.isfinite(v) for v in vals)
+
+
+def _finite_vel(data):
+    return len(data) == 3 and all(math.isfinite(float(v)) for v in data)
+
+
 class CmdVelToAttitude(Node):
 
-    def __init__(self):
+    def __init__(self, clock=None):
         super().__init__('cmd_vel_to_attitude')
 
         self.declare_parameter('rate', 50)
@@ -97,15 +105,19 @@ class CmdVelToAttitude(Node):
         self._thr_max = self.get_parameter('thrust_max').value
         self._vel_fb_timeout = self.get_parameter('vel_feedback_timeout').value
 
+        self._time_fn = clock if clock is not None else time.monotonic
+
         self._vel_cmd = [0.0, 0.0, 0.0]
         self._yaw_rate = 0.0
         self._last_cmd = 0.0
         self._vel_est = [0.0, 0.0, 0.0]
         self._vel_est_time = 0.0
         self._yaw = 0.0
-        self._last_tick = time.time()
+        self._last_tick = self._time_fn()
         self._state = 'HOLD'
         self._fb_warned = False
+        self._cmd_invalid = False
+        self._err_published = False
 
         self._cmd_sub = self.create_subscription(Twist, 'uav/cmd_vel', self._on_cmd_vel, 1)
         self._vel_sub = self.create_subscription(
@@ -113,29 +125,48 @@ class CmdVelToAttitude(Node):
 
         self._sp_pub = self.create_publisher(Float32MultiArray, 'attitude_setpoint', 1)
         self._state_pub = self.create_publisher(String, 'uav/cmd_state', 1)
+        self._sys_state_pub = self.create_publisher(String, 'system/current_state', 10)
 
         self._timer = self.create_timer(1.0 / self._rate, self._update)
 
+    def _report_error(self):
+        if not self._err_published:
+            self._sys_state_pub.publish(String(data='ERROR'))
+            self._err_published = True
+            self.get_logger().error('invalid /uav/cmd_vel rejected, '
+                                    'published /system/current_state=ERROR')
+
     def _on_cmd_vel(self, msg):
+        vals = [msg.linear.x, msg.linear.y, msg.linear.z,
+                msg.angular.x, msg.angular.y, msg.angular.z]
+        if not _finite_cmd(vals):
+            self._cmd_invalid = True
+            self._report_error()
+            return
+        self._cmd_invalid = False
+        self._err_published = False
         self._vel_cmd = [float(msg.linear.x), float(msg.linear.y), float(msg.linear.z)]
         self._yaw_rate = float(msg.angular.z)
-        self._last_cmd = time.time()
+        self._last_cmd = self._time_fn()
 
     def _on_velocity(self, msg):
         data = msg.data
-        if len(data) == 3:
-            self._vel_est = [float(data[0]), float(data[1]), float(data[2])]
-            self._vel_est_time = time.time()
+        if not _finite_vel(data):
+            return
+        self._vel_est = [float(data[0]), float(data[1]), float(data[2])]
+        self._vel_est_time = self._time_fn()
 
     def _hold_setpoint(self):
         return [1.0, 0.0, 0.0, 0.0, self._hover]
 
     def _update(self):
-        now = time.time()
+        now = self._time_fn()
         dt = max(now - self._last_tick, 0.0)
         self._last_tick = now
 
-        if now - self._last_cmd > self._cmd_timeout:
+        if self._cmd_invalid:
+            self._state = 'HOLD'
+        elif now - self._last_cmd > self._cmd_timeout:
             self._state = 'HOLD'
         elif now - self._vel_est_time > self._vel_fb_timeout:
             if not self._fb_warned:
