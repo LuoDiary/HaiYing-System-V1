@@ -32,9 +32,9 @@ ros2 launch attitude_cmd freeze_chain.launch.py          # 正式: 链路+转换
 ros2 launch attitude_cmd freeze_chain.launch.py use_fake_px4:=true   # 回环冒烟
 ```
 
-**禁止并行**(与旧控制器互斥): `simulation/uav_control` 的 `takeoff.py` /
-`vision_control.py`(MAVROS setpoint_position 控制)、MAVROS 进程、
-`hover_demo_node`、手动 `ros2 topic pub /attitude_setpoint`、`offshore.launch.py`。
+**禁止并行或重新引入**：已删除的旧 MAVROS takeoff/vision_control 原型、
+MAVROS 进程、`hover_demo_node`、手动
+`ros2 topic pub /attitude_setpoint`。
 唯一速度控制器 = `approach_controller`(→转换节点→链路节点)。
 
 ## Q2. /uav/cmd_vel 坐标约定

@@ -102,8 +102,7 @@ ros2 run attitude_cmd cmd_vel_to_attitude   # 订阅 /uav/cmd_vel + /vehicle_vel
 - 实现位置: `mavlink_link_node.py`(发布器 + `LOCAL_POSITION_NED` 处理),
   `PoseStamped`,frame=`map`,NED 位置 + 最新 `ATTITUDE_QUATERNION` 姿态;
   同步发布 `/vehicle_velocity`(`[vx vy vz]`)供 `cmd_vel_to_attitude` 使用。
-- 仿真侧旧 MAVROS 路径(`simulation/uav_control` 的 takeoff/vision_control)
-  冻结后禁止运行(与直连链路冲突)。
+- 仿真侧旧 MAVROS takeoff/vision_control 原型已从 main 删除；冻结后禁止恢复运行（与直连链路冲突）。
 
 ## Q5. ERROR 或 `/uav/cmd_vel` 超时 3 s,由哪个节点执行 Hold/POSCTL/RTL/Land?
 
@@ -135,17 +134,11 @@ ros2 run attitude_cmd cmd_vel_to_attitude   # 订阅 /uav/cmd_vel + /vehicle_vel
 
 **答案: 冻结清单已可运行(全链远程验证通过),只保留一条控制路径。**
 
-当前仿真(核心仓库,`simulation/launch/offshore.launch.py` +
-`scripts/README.md`):
-
-```
-PX4 SITL + Gazebo(iris.sdf)
- ├─ 路径A(旧,冻结后禁用): MAVROS + uav_control(takeoff / vision_control,
- │             /mavros/setpoint_position/local 位置控制)
- └─ 路径B(冻结): 视觉链 yolo → target_localizer → approach_controller
-                └─ /uav/cmd_vel → cmd_vel_to_attitude → /attitude_setpoint
-                   → attitude_cmd_node → MAVLink → PX4  ✅已全链验证
-```
+旧仿真入口及旧 MAVROS 控制包已从 main 删除，不再作为当前联合仿真的
+启动依据。V9.2 无人机—机械臂联合模型及其独立启动入口将在后续提交中
+提供；飞控控制侧只允许使用本文件冻结的
+`/uav/cmd_vel → cmd_vel_to_attitude → /attitude_setpoint → attitude_cmd_node → MAVLink → PX4`
+单一路径。
 
 冻结后唯一启动清单(避免多速度控制器):
 
@@ -157,9 +150,8 @@ ros2 run attitude_cmd cmd_vel_to_attitude                       # 唯一转换�
 python3 scripts/approach_controller.py                          # 决策/接近(唯一 /uav/cmd_vel 生产者)
 ```
 
-**禁止同时运行**: `hover_demo_node`(直发 `/attitude_setpoint`)、
-`simulation/uav_control` 的 takeoff/vision_control(MAVROS 位置控制,与
-`/uav/cmd_vel` 链构成双速度控制器)、MAVROS 进程、手动
+**禁止同时运行或重新引入**：已删除的旧 MAVROS takeoff/vision_control 原型、
+`hover_demo_node`（直发 `/attitude_setpoint`）、MAVROS 进程、手动
 `ros2 topic pub /attitude_setpoint`、任何直开串口进程。
 
 ---
