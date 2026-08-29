@@ -719,8 +719,8 @@
       <axis>
         <xyz>0.99996 -7.6e-05 0.008726</xyz>
         <limit>
-          <lower>-1.57</lower>
-          <upper>1.57</upper>
+          <lower>-0.5236</lower>
+          <upper>2.9</upper>
           <effort>10</effort>
           <velocity>5</velocity>
         </limit>
@@ -791,8 +791,8 @@
       <axis>
         <xyz>-0.99992 0.008802 -0.00865</xyz>
         <limit>
-          <lower>-1.57</lower>
-          <upper>1.57</upper>
+          <lower>0</lower>
+          <upper>3.14</upper>
           <effort>10</effort>
           <velocity>5</velocity>
         </limit>
@@ -935,8 +935,8 @@
       <axis>
         <xyz>0 0 1</xyz>
         <limit>
-          <lower>-1.57</lower>
-          <upper>1.57</upper>
+          <lower>-3.14</lower>
+          <upper>3.14</upper>
           <effort>10</effort>
           <velocity>5</velocity>
         </limit>
