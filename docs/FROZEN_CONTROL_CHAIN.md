@@ -17,10 +17,11 @@
                             │ /uav/cmd_state (ACTIVE/HOLD)
                             ▼
                           attitude_cmd_node (MAVLink 直连节点, 独占 TELEM 串口)
-                            │ SET_ATTITUDE_TARGET (msg 82) → PX4
-                            │ /mavros/local_position/pose (别名) ← LOCAL_POSITION_NED
-                            │ /vehicle_velocity /vehicle_local_position /vibration ...
-                            ▼
+                            | SET_ATTITUDE_TARGET (msg 82) → PX4
+                            | /mavros/local_position/pose (别名, ENU) ← LOCAL_POSITION_NED
+                            | /vehicle_velocity /vehicle_local_position /vibration ...
+                            | /uav/flight_fault (独立故障接口, 飞控层上报)
+                          (系统状态 /system/current_state 仅由决策层/FSM 发布)
                           PX4 (H743R1) → mc_att_control → 执行机构
 ```
 
@@ -47,12 +48,18 @@ ros2 run attitude_cmd attitude_cmd_node --ros-args -p port:=/dev/ttyS2 -p baud:=
 ros2 run attitude_cmd cmd_vel_to_attitude
 ```
 
-联合仿真(无硬件):
+正式联仿(唯一入口, 决策层单独运行):
 
 ```bash
-# 终端1: 模拟飞控
-ros2 run attitude_cmd fake_px4
-# 终端2: 链路节点(测试口)
+ros2 launch attitude_cmd freeze_chain.launch.py              # 链路+转换节点
+# 决策层/FSM 单独启动(不在 launch 内): mission_fsm_node / approach_controller
+```
+
+回环冒烟(无硬件):
+
+```bash
+ros2 launch attitude_cmd freeze_chain.launch.py use_fake_px4:=true
+```
 ros2 run attitude_cmd attitude_cmd_node --ros-args -p port:=udpin:14550
 # 终端3: 转换节点
 ros2 run attitude_cmd cmd_vel_to_attitude

@@ -58,9 +58,17 @@ def _quat_ned_to_enu(q):
     return [a * (y - x), a * (w - z), a * (w + z), -a * (x + y)]
 
 
+def _finite_quat(q):
+    return all(math.isfinite(float(v)) for v in q)
+
+
+def _finite_lpned(vals):
+    return all(math.isfinite(float(v)) for v in vals)
+
+
 class AttitudeCmdNode(Node):
 
-    def __init__(self):
+    def __init__(self, clock_fn=None, mav_conn=None, data_dir=None):
         super().__init__('attitude_cmd_node')
 
         self.declare_parameter('port', '/dev/ttyS2')
@@ -85,7 +93,12 @@ class AttitudeCmdNode(Node):
         elif port.startswith('udpout:') and port.count(':') == 1:
             port = 'udpout:127.0.0.1:' + port.split(':')[1]
 
-        self._mav = mavutil.mavlink_connection(port, baud=baud)
+        self._time_fn = clock_fn if clock_fn is not None else time.monotonic
+
+        if mav_conn is not None:
+            self._mav = mav_conn
+        else:
+            self._mav = mavutil.mavlink_connection(port, baud=baud)
         self.get_logger().info(f'opened {port} @ {baud} baud')
 
         self._setpoint = [1.0, 0.0, 0.0, 0.0, 0.0]
@@ -99,13 +112,15 @@ class AttitudeCmdNode(Node):
         self._safety = SAFETY_NORMAL
         self._safety_entered = 0.0
         self._cmd_state = 'ACTIVE'
-        self._cmd_state_time = time.time()
+        self._cmd_state_time = self._time_fn()
         self._att_quat = [1.0, 0.0, 0.0, 0.0]
         self._last_heartbeat = 0.0
         self._last_pos = 0.0
         self._err_published = False
 
-        data_dir = Path(self.get_parameter('data_dir').value)
+        if data_dir is None:
+            data_dir = Path(self.get_parameter('data_dir').value)
+        data_dir = Path(data_dir)
         data_dir.mkdir(parents=True, exist_ok=True)
         self._vib_fh = open(data_dir / 'vibration.csv', 'w', newline='')
         self._vib_writer = csv.writer(self._vib_fh)
@@ -136,7 +151,7 @@ class AttitudeCmdNode(Node):
         self._vel_pub = self.create_publisher(Float32MultiArray, 'vehicle_velocity', 1)
         self._pose_pub = self.create_publisher(PoseStamped, 'mavros/local_position/pose', 1)
         self._drift_pub = self.create_publisher(Float32, 'hover_drift', 1)
-        self._sys_state_pub = self.create_publisher(String, 'system/current_state', 10)
+        self._sys_state_pub = self.create_publisher(String, 'uav/flight_fault', 10)
 
         self._setpoint_timer = self.create_timer(1.0 / self._rate, self._send_setpoint)
         self._hb_timer = self.create_timer(0.5, self._send_heartbeat)
@@ -157,6 +172,8 @@ class AttitudeCmdNode(Node):
         if len(data) != 5:
             self.get_logger().warn(
                 f'attitude_setpoint needs 5 floats [qw qx qy qz thrust], got {len(data)}')
+            self._report_error()
+            self._enter_safety_hold()
             return
         if not all(math.isfinite(float(v)) for v in data):
             self.get_logger().warn('attitude_setpoint contains non-finite values, rejected')
@@ -176,7 +193,7 @@ class AttitudeCmdNode(Node):
             thrust = float(self._setpoint[4])
         try:
             self._mav.mav.set_attitude_target_send(
-                int(time.time() * 1000) % 2**32,
+                int(self._time_fn() * 1000) % 2**32,
                 self._sysid,
                 self._compid,
                 TYPEMASK_IGNORE_RATES,
@@ -186,16 +203,17 @@ class AttitudeCmdNode(Node):
         except Exception as e:
             self.get_logger().error(f'attitude setpoint send failed: {e}')
             self._report_error()
+            self._enter_safety_hold()
 
     def _report_error(self):
         if not self._err_published:
             self._sys_state_pub.publish(String(data='ERROR'))
             self._err_published = True
-            self.get_logger().warn('fault: published /system/current_state=ERROR')
+            self.get_logger().warn('fault: published /uav/flight_fault=ERROR')
 
     def _on_cmd_state(self, msg):
         self._cmd_state = msg.data
-        self._cmd_state_time = time.time()
+        self._cmd_state_time = self._time_fn()
 
     def _on_decision_state(self, msg):
         data = msg.data
@@ -232,11 +250,11 @@ class AttitudeCmdNode(Node):
     def _enter_safety_hold(self):
         if self._safety == SAFETY_NORMAL:
             self._safety = SAFETY_HOLD
-            self._safety_entered = time.time()
+            self._safety_entered = self._time_fn()
             self.get_logger().info('safety: stop forwarding, hold attitude')
 
     def _safety_check(self):
-        now = time.time()
+        now = self._time_fn()
         if self._cmd_state in ('HOLD', 'FAULT'):
             self._enter_safety_hold()
         elif now - self._cmd_state_time > self._cmd_state_timeout:
@@ -308,16 +326,14 @@ class AttitudeCmdNode(Node):
                 continue
             mtype = msg.get_type()
             if mtype == 'HEARTBEAT':
-                self._last_heartbeat = time.time()
+                self._last_heartbeat = self._time_fn()
                 self._armed = bool(msg.base_mode & mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
                 self._mode = PX4_MODES.get(msg.custom_mode >> 16, 'unknown')
                 state = f'armed={self._armed} mode={self._mode}'
                 self._state_pub.publish(String(data=state))
             elif mtype == 'ATTITUDE_QUATERNION':
                 q = [float(msg.q1), float(msg.q2), float(msg.q3), float(msg.q4)]
-                self._att_quat = q
-                self._att_pub.publish(Quaternion(
-                    x=q[1], y=q[2], z=q[3], w=q[0]))
+                self._handle_attitude_quaternion(q)
             elif mtype == 'VIBRATION':
                 vib = [
                     float(msg.vibration_x),
@@ -331,27 +347,9 @@ class AttitudeCmdNode(Node):
                 self._vib_writer.writerow([time.time(), msg.time_usec] + vib)
                 self._vib_fh.flush()
             elif mtype == 'LOCAL_POSITION_NED':
-                stamp = self.get_clock().now().to_msg()
-                self._last_pos = time.time()
-                point = Point(x=float(msg.x), y=float(msg.y), z=float(msg.z))
-                self._pos_pub.publish(PointStamped(
-                    header=Header(stamp=stamp, frame_id='local_origin_ned'),
-                    point=point))
-                self._vel_pub.publish(Float32MultiArray(
-                    data=[float(msg.vx), float(msg.vy), float(msg.vz)]))
-                q = self._att_quat
-                pe = _ned_to_enu([float(msg.x), float(msg.y), float(msg.z)])
-                qe = _quat_ned_to_enu(q)
-                self._pose_pub.publish(PoseStamped(
-                    header=Header(stamp=stamp, frame_id='map'),
-                    pose=Pose(position=Point(x=pe[0], y=pe[1], z=pe[2]),
-                              orientation=Quaternion(
-                                  x=qe[1], y=qe[2], z=qe[3], w=qe[0]))))
-                drift = math.hypot(float(msg.x), float(msg.y))
-                self._drift_pub.publish(Float32(data=drift))
-                self._pos_writer.writerow([time.time(), msg.time_boot_ms,
-                                           float(msg.x), float(msg.y), float(msg.z)])
-                self._pos_fh.flush()
+                lp = [float(msg.x), float(msg.y), float(msg.z),
+                      float(msg.vx), float(msg.vy), float(msg.vz)]
+                self._handle_local_position_ned(lp, msg.time_boot_ms)
             elif mtype == 'COMMAND_ACK':
                 if msg.result != 0:
                     self.get_logger().error(
@@ -360,6 +358,42 @@ class AttitudeCmdNode(Node):
                 else:
                     self.get_logger().info(
                         f'COMMAND_ACK cmd={msg.command} result={msg.result}')
+
+    def _handle_attitude_quaternion(self, q):
+        if not _finite_quat(q):
+            self.get_logger().warn('ATTITUDE_QUATERNION non-finite, rejected')
+            self._report_error()
+            return
+        self._att_quat = q
+        self._att_pub.publish(Quaternion(
+            x=q[1], y=q[2], z=q[3], w=q[0]))
+
+    def _handle_local_position_ned(self, lp, time_boot_ms):
+        if not _finite_lpned(lp):
+            self.get_logger().warn('LOCAL_POSITION_NED non-finite, rejected')
+            self._report_error()
+            return
+        stamp = self.get_clock().now().to_msg()
+        self._last_pos = self._time_fn()
+        point = Point(x=lp[0], y=lp[1], z=lp[2])
+        self._pos_pub.publish(PointStamped(
+            header=Header(stamp=stamp, frame_id='local_origin_ned'),
+            point=point))
+        self._vel_pub.publish(Float32MultiArray(
+            data=[lp[3], lp[4], lp[5]]))
+        q = self._att_quat
+        pe = _ned_to_enu(lp[0:3])
+        qe = _quat_ned_to_enu(q)
+        self._pose_pub.publish(PoseStamped(
+            header=Header(stamp=stamp, frame_id='map'),
+            pose=Pose(position=Point(x=pe[0], y=pe[1], z=pe[2]),
+                      orientation=Quaternion(
+                          x=qe[1], y=qe[2], z=qe[3], w=qe[0]))))
+        drift = math.hypot(lp[0], lp[1])
+        self._drift_pub.publish(Float32(data=drift))
+        self._pos_writer.writerow([time.time(), time_boot_ms,
+                                   lp[0], lp[1], lp[2]])
+        self._pos_fh.flush()
 
     def destroy_node(self):
         self._running = False

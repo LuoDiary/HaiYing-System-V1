@@ -28,7 +28,8 @@
 ```bash
 source /opt/ros/jazzy/setup.bash   # 或 humble
 source <ws>/install/setup.bash
-ros2 launch attitude_cmd freeze_chain.launch.py
+ros2 launch attitude_cmd freeze_chain.launch.py          # 正式: 链路+转换
+ros2 launch attitude_cmd freeze_chain.launch.py use_fake_px4:=true   # 回环冒烟
 ```
 
 **禁止并行**(与旧控制器互斥): `simulation/uav_control` 的 `takeoff.py` /
@@ -126,7 +127,7 @@ y=0.143, z=+1.0),姿态 = (0.7071, 0.7071, 0, 0)(水平)。
 `/system/current_state` 现为**双发布者**: 决策层(approach_controller)发布任务
 状态;链路层(`attitude_cmd_node`,新增发布器)只发布故障状态。职责表:
 
-| 故障 | 上报节点 | 触发条件 | 状态 |
+| 故障 | 上报节点(→/uav/flight_fault) | 触发条件 | 状态 |
 |---|---|---|---|
 | MAVLink 断开 | `attitude_cmd_node` | 3 s 无 HEARTBEAT | **已实现**(远程验证 ERROR) |
 | 遥测超时 | `attitude_cmd_node` | 1 s 无 LOCAL_POSITION_NED | **已实现** |
@@ -185,7 +186,8 @@ ERROR 持续期间若 3 s 内恢复(NOMINAL/任务状态),回到 NORMAL,不切�
 cd /home/luodiary/Desktop/ROSProject/20260812
 colcon build --packages-select attitude_cmd
 source install/setup.bash
-ros2 launch attitude_cmd freeze_chain.launch.py
+ros2 launch attitude_cmd freeze_chain.launch.py          # 正式: 链路+转换
+ros2 launch attitude_cmd freeze_chain.launch.py use_fake_px4:=true   # 回环冒烟
 ```
 
 关键测试输出(节选,2026-08-28):
@@ -246,9 +248,39 @@ MAVLink 转发非有限值。计时基准统一为 	ime.monotonic()(注入式,�
 /system/current_state=ERROR(一次) → 有效指令恢复 ACTIVE;链路对端仅收到
 有限设定值(0 个 nan/inf)。单元测试 27/27 通过。
 
+
+## 链路层四项安全缺口与故障接口架构(修订 V1.2,2026-08-29)
+
+Humble 内存 MAVLink 测试(官方 main e5023f9,冻结报告 SHA256
+9dfb4b9a330a6135b113de99344a0de0c360f779ec6d79b83e043cac1a828440)
+确认四项缺口,均已修复:
+
+1. /attitude_setpoint 长度 ≠ 5: 原来仅 return(继续发旧值),现与非法值
+   **统一拒绝**——不更新设定值、当拍 _enter_safety_hold()、上报故障;
+2. set_attitude_target_send() 异常: 原来仅 _report_error()(依赖异步回环),
+   现**当拍直接 _enter_safety_hold()**(不依赖自身 ERROR 话题回环);
+3. LOCAL_POSITION_NED(x/y/z/vx/vy/vz)与 ATTITUDE_QUATERNION(q1..q4)
+   新增 **isfinite 校验**: 非法遥测拒绝(不污染 /vehicle_velocity、
+   /mavros/local_position/pose、姿态缓存),上报故障,并计入超时判定
+   (_last_pos 不刷新 → 走遥测超时阶梯);
+4. 链路节点安全计时**统一改为单调时钟**(_time_fn,注入式,与转换节点一致),
+   并补充时间倒退测试。
+
+架构(与 FSM 解耦): 飞控链路层(cmd_vel_to_attitude、
+mavlink_link_node)**不再发布 /system/current_state**,改由独立故障接口
+/uav/flight_fault(String,ERROR 每轮事件一次、恢复静默)上报;
+/system/current_state 由决策层(FSM)唯一发布。reeze_chain.launch.py
+正式联仿只启动链路+转换节点(决策层单独运行;ake_px4 仅 use_fake_px4:=true
+回环冒烟用)。
+
+验证: pytest 35/35 通过(转换节点 27 + 链路节点 8);Jazzy 实机: 长度错误/
+NaN 设定值 → HOLD + /uav/flight_fault=ERROR,NaN cmd_vel → 转换节点
+light_fault=ERROR,飞控层不再发布 /system/current_state(echo 为空)。
+
 ## 修订记录
 
 | 日期 | 内容 |
 |---|---|
 | 2026-08-28 | V1.0: 冻结坐标系(cmd_vel=NED, pose=ENU)、FAULT 语义、ERROR 上报职责表、launch+params、超时阶梯、端口规则、实测记录 |
 | 2026-08-29 | V1.1: NaN/Inf 指令拒绝(HOLD+ERROR)、反馈校验、单调时钟、链路层设定值守卫、自动化测试(27 项) |
+| 2026-08-29 | V1.2: 链路层四项缺口(设定值长度拒绝/发送失败当拍 HOLD/遥测 isfinite/单调时钟)+ 独立故障接口 /uav/flight_fault + launch 正式范围;测试 35 项 |
