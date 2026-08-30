@@ -15,7 +15,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_msgs.msg import Float32, Float32MultiArray, Header, String
 from geometry_msgs.msg import Point, PointStamped, Pose, PoseStamped, Quaternion
-from std_srvs.srv import SetBool
+from std_srvs.srv import SetBool, Trigger
 
 from pymavlink import mavutil
 from pymavlink.dialects.v20 import common as mavlink
@@ -46,6 +46,9 @@ SAFETY_SWITCHED = 'SWITCHED'
 
 HEARTBEAT_TIMEOUT = 3.0
 TELEMETRY_TIMEOUT = 1.0
+STARTUP_TIMEOUT = 5.0
+
+NORMAL_STATES = {'SEARCHING', 'TARGET_FOUND', 'APPROACHING', 'BRUSHING', 'RETURNING'}
 
 
 def _ned_to_enu(p):
@@ -111,6 +114,8 @@ class AttitudeCmdNode(Node):
         self._cmd_state_timeout = self.get_parameter('cmd_state_timeout').value
         self._safety = SAFETY_NORMAL
         self._safety_entered = 0.0
+        self._hold_latched = False
+        self._start_time = self._time_fn()
         self._cmd_state = 'ACTIVE'
         self._cmd_state_time = self._time_fn()
         self._att_quat = [1.0, 0.0, 0.0, 0.0]
@@ -143,6 +148,8 @@ class AttitudeCmdNode(Node):
             String, 'uav/decision_state', self._on_decision_state, 1)
         self._system_state_sub = self.create_subscription(
             String, 'system/current_state', self._on_system_state, 1)
+        self._safety_reset_srv = self.create_service(
+            Trigger, 'mavlink/safety_reset', self._on_safety_reset)
 
         self._att_pub = self.create_publisher(Quaternion, 'vehicle_attitude', 1)
         self._state_pub = self.create_publisher(String, 'vehicle_state', 1)
@@ -161,11 +168,16 @@ class AttitudeCmdNode(Node):
         self._rx_thread.start()
 
     def _send_heartbeat(self):
-        self._mav.mav.heartbeat_send(
-            mavlink.MAV_TYPE_GCS,
-            mavlink.MAV_AUTOPILOT_INVALID,
-            0, 0,
-            mavlink.MAV_STATE_ACTIVE)
+        try:
+            self._mav.mav.heartbeat_send(
+                mavlink.MAV_TYPE_GCS,
+                mavlink.MAV_AUTOPILOT_INVALID,
+                0, 0,
+                mavlink.MAV_STATE_ACTIVE)
+        except Exception as e:
+            self.get_logger().error(f'heartbeat send failed: {e}')
+            self._report_error()
+            self._enter_safety_hold(latched=True)
 
     def _on_setpoint(self, msg):
         data = msg.data
@@ -173,12 +185,12 @@ class AttitudeCmdNode(Node):
             self.get_logger().warn(
                 f'attitude_setpoint needs 5 floats [qw qx qy qz thrust], got {len(data)}')
             self._report_error()
-            self._enter_safety_hold()
+            self._enter_safety_hold(latched=True)
             return
         if not all(math.isfinite(float(v)) for v in data):
             self.get_logger().warn('attitude_setpoint contains non-finite values, rejected')
             self._report_error()
-            self._enter_safety_hold()
+            self._enter_safety_hold(latched=True)
             return
         self._setpoint = list(data)
 
@@ -203,7 +215,7 @@ class AttitudeCmdNode(Node):
         except Exception as e:
             self.get_logger().error(f'attitude setpoint send failed: {e}')
             self._report_error()
-            self._enter_safety_hold()
+            self._enter_safety_hold(latched=True)
 
     def _report_error(self):
         if not self._err_published:
@@ -219,9 +231,7 @@ class AttitudeCmdNode(Node):
         data = msg.data
         self.get_logger().info(f'decision_state: {data}')
         if data == 'NOMINAL':
-            if self._safety == SAFETY_HOLD:
-                self._safety = SAFETY_NORMAL
-                self.get_logger().info('safety: back to NORMAL')
+            self._release_fsm_hold()
         elif data in ('HOLD', 'ERROR'):
             self._enter_safety_hold()
         elif data == 'RTL':
@@ -233,10 +243,8 @@ class AttitudeCmdNode(Node):
 
     def _on_system_state(self, msg):
         data = msg.data
-        if data in ('SEARCHING', 'APPROACHING', 'BRUSHING', 'HOVERING'):
-            if self._safety == SAFETY_HOLD:
-                self._safety = SAFETY_NORMAL
-                self.get_logger().info('safety: back to NORMAL')
+        if data in NORMAL_STATES:
+            self._release_fsm_hold()
         elif data == 'ERROR':
             self.get_logger().warn(f'system/current_state: {data}')
             self._enter_safety_hold()
@@ -247,7 +255,36 @@ class AttitudeCmdNode(Node):
             self._switch_mode(PX4_MAIN_MODE_AUTO, PX4_SUB_MODE_AUTO_LAND)
             self._safety = SAFETY_SWITCHED
 
-    def _enter_safety_hold(self):
+    def _release_fsm_hold(self):
+        if self._safety == SAFETY_HOLD and not self._hold_latched:
+            self._safety = SAFETY_NORMAL
+            self.get_logger().info('safety: back to NORMAL')
+
+    def _on_safety_reset(self, request, response):
+        if self._safety != SAFETY_HOLD and not self._hold_latched:
+            response.success = True
+            response.message = 'no hold active'
+            return response
+        now = self._time_fn()
+        link_ok = (self._last_heartbeat > 0.0
+                   and now - self._last_heartbeat <= HEARTBEAT_TIMEOUT
+                   and self._last_pos > 0.0
+                   and now - self._last_pos <= TELEMETRY_TIMEOUT)
+        if not link_ok:
+            response.success = False
+            response.message = 'link unhealthy, reset refused'
+            return response
+        self._safety = SAFETY_NORMAL
+        self._hold_latched = False
+        self._err_published = False
+        self.get_logger().info('safety: reset acknowledged (link verified)')
+        response.success = True
+        response.message = 'safety reset'
+        return response
+
+    def _enter_safety_hold(self, latched=False):
+        if latched:
+            self._hold_latched = True
         if self._safety == SAFETY_NORMAL:
             self._safety = SAFETY_HOLD
             self._safety_entered = self._time_fn()
@@ -255,6 +292,12 @@ class AttitudeCmdNode(Node):
 
     def _safety_check(self):
         now = self._time_fn()
+        if (self._last_heartbeat == 0.0 or self._last_pos == 0.0) \
+                and now - self._start_time > STARTUP_TIMEOUT:
+            if not self._err_published:
+                self.get_logger().warn('first telemetry not received within startup timeout')
+            self._report_error()
+            self._enter_safety_hold(latched=True)
         if self._cmd_state in ('HOLD', 'FAULT'):
             self._enter_safety_hold()
         elif now - self._cmd_state_time > self._cmd_state_timeout:
@@ -265,11 +308,13 @@ class AttitudeCmdNode(Node):
             if not self._err_published:
                 self.get_logger().warn('MAVLink heartbeat lost')
             self._report_error()
+            self._enter_safety_hold(latched=True)
         elif self._last_pos > 0.0 and now - self._last_pos > TELEMETRY_TIMEOUT:
             if not self._err_published:
                 self.get_logger().warn('telemetry (LOCAL_POSITION_NED) timeout')
             self._report_error()
-        elif self._err_published:
+            self._enter_safety_hold(latched=True)
+        elif self._err_published and not self._hold_latched:
             self._err_published = False
             self.get_logger().info('fault cleared')
         if self._safety == SAFETY_HOLD and now - self._safety_entered > self._hold_timeout:
@@ -314,10 +359,15 @@ class AttitudeCmdNode(Node):
         return response
 
     def _send_command(self, command, params):
-        self._mav.mav.command_long_send(
-            self._sysid, self._compid, command, 0,
-            params[0], params[1], params[2], params[3],
-            params[4], params[5], params[6])
+        try:
+            self._mav.mav.command_long_send(
+                self._sysid, self._compid, command, 0,
+                params[0], params[1], params[2], params[3],
+                params[4], params[5], params[6])
+        except Exception as e:
+            self.get_logger().error(f'command send failed: {e}')
+            self._report_error()
+            self._enter_safety_hold(latched=True)
 
     def _rx_loop(self):
         while self._running and rclpy.ok():
@@ -351,18 +401,13 @@ class AttitudeCmdNode(Node):
                       float(msg.vx), float(msg.vy), float(msg.vz)]
                 self._handle_local_position_ned(lp, msg.time_boot_ms)
             elif mtype == 'COMMAND_ACK':
-                if msg.result != 0:
-                    self.get_logger().error(
-                        f'COMMAND_ACK cmd={msg.command} result={msg.result}')
-                    self._report_error()
-                else:
-                    self.get_logger().info(
-                        f'COMMAND_ACK cmd={msg.command} result={msg.result}')
+                self._handle_command_ack(msg.command, msg.result)
 
     def _handle_attitude_quaternion(self, q):
         if not _finite_quat(q):
             self.get_logger().warn('ATTITUDE_QUATERNION non-finite, rejected')
             self._report_error()
+            self._enter_safety_hold(latched=True)
             return
         self._att_quat = q
         self._att_pub.publish(Quaternion(
@@ -372,6 +417,7 @@ class AttitudeCmdNode(Node):
         if not _finite_lpned(lp):
             self.get_logger().warn('LOCAL_POSITION_NED non-finite, rejected')
             self._report_error()
+            self._enter_safety_hold(latched=True)
             return
         stamp = self.get_clock().now().to_msg()
         self._last_pos = self._time_fn()
@@ -394,6 +440,14 @@ class AttitudeCmdNode(Node):
         self._pos_writer.writerow([time.time(), time_boot_ms,
                                    lp[0], lp[1], lp[2]])
         self._pos_fh.flush()
+
+    def _handle_command_ack(self, command, result):
+        if result != 0:
+            self.get_logger().error(f'COMMAND_ACK cmd={command} result={result}')
+            self._report_error()
+            self._enter_safety_hold(latched=True)
+        else:
+            self.get_logger().info(f'COMMAND_ACK cmd={command} result={result}')
 
     def destroy_node(self):
         self._running = False

@@ -277,6 +277,35 @@ mavlink_link_node)**不再发布 /system/current_state**,改由独立故障接�
 NaN 设定值 → HOLD + /uav/flight_fault=ERROR,NaN cmd_vel → 转换节点
 light_fault=ERROR,飞控层不再发布 /system/current_state(echo 为空)。
 
+
+## 首帧超时、HOLD 锁存与六态闭环(修订 V1.3,2026-08-29)
+
+PR #6 合并后补充闭环(追加 commit):
+
+1. **首帧遥测等待超时**: 节点启动后 5 s(`STARTUP_TIMEOUT`)内未收到首个
+   HEARTBEAT 或 LOCAL_POSITION_NED → 上报 `/uav/flight_fault=ERROR` 并进入
+   **锁存**安全保持(此前时间戳保持 0,超时检测不触发);
+2. **HOLD 锁存**: 链路故障(心跳/遥测丢失或非法、设定值非法、发送失败、
+   ACK 拒绝、启动无遥测)触发的 SAFETY_HOLD 置 `_hold_latched`——普通 FSM
+   状态(SEARCHING/TARGET_FOUND/APPROACHING/BRUSHING/RETURNING)或
+   `NOMINAL` **不再自动解除**;仅 `mavlink/safety_reset` 服务
+   (std_srvs/Trigger)且**链路健康校验通过**(心跳+遥测新鲜)后方可复位;
+   FSM 主动 HOLD(decision/system_state=ERROR)保持原有可释放语义;
+3. **最终六态**(删除 HOVERING): SEARCHING / TARGET_FOUND / APPROACHING /
+   BRUSHING / RETURNING / ERROR —— `approach_controller.py` 状态机与
+   `mavlink_link_node` 消费映射同步更新(目标丢失:作业后→RETURNING,
+   其余→SEARCHING;检测到目标→TARGET_FOUND);
+4. **统一故障语义**: OFFBOARD/解锁 COMMAND_ACK 拒绝、MAVLink 命令发送异常、
+   心跳发送异常、非法遥测、非法设定值、发送失败 → 一律
+   `/uav/flight_fault=ERROR` + **锁存**安全保持(同一当拍);
+5. **Humble 隔离验证**(三场景,`test/test_link_fault_handling.py`,5 项):
+   - 启动无遥测 → ERROR + 锁存 HOLD;
+   - 故障锁存后 BRUSHING 不解除 HOLD;
+   - COMMAND_ACK 拒绝 → 锁存 HOLD;
+   - 附: 复位服务健康校验(不健康拒绝/健康复位)。
+   运行: `python3 -m pytest test/test_link_fault_handling.py -v`
+   (纯 rclpy/std_msgs/std_srvs,与发行版无关;Jazzy 实测 40/40,含既有套件)。
+
 ## 修订记录
 
 | 日期 | 内容 |
@@ -284,3 +313,4 @@ NaN 设定值 → HOLD + /uav/flight_fault=ERROR,NaN cmd_vel → 转换节点
 | 2026-08-28 | V1.0: 冻结坐标系(cmd_vel=NED, pose=ENU)、FAULT 语义、ERROR 上报职责表、launch+params、超时阶梯、端口规则、实测记录 |
 | 2026-08-29 | V1.1: NaN/Inf 指令拒绝(HOLD+ERROR)、反馈校验、单调时钟、链路层设定值守卫、自动化测试(27 项) |
 | 2026-08-29 | V1.2: 链路层四项缺口(设定值长度拒绝/发送失败当拍 HOLD/遥测 isfinite/单调时钟)+ 独立故障接口 /uav/flight_fault + launch 正式范围;测试 35 项 |
+| 2026-08-29 | V1.3: 首帧遥测启动超时、HOLD 锁存(仅验证复位接口解除)、六态(删 HOVERING,加 TARGET_FOUND/RETURNING)、统一故障语义;Humble 三场景测试;测试 40 项 |

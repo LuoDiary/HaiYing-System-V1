@@ -13,11 +13,13 @@
 =========================================
 订阅 /vision/target_point → 计算距离 → 状态机 → /uav/cmd_vel + /system/current_state
 
-状态转换:
-  SEARCHING  → 无目标, 原地悬停
-  APPROACHING → 距离 > 2m, 朝目标前进
-  BRUSHING   → 距离 < 0.5m, 悬停等待机械臂
-  HOVERING   → 目标丢失超3秒, 强制悬停
+状态转换(最终六态):
+  SEARCHING    → 无目标, 原地悬停
+  TARGET_FOUND → 检测到目标
+  APPROACHING  → 距离 > 2m, 朝目标前进
+  BRUSHING     → 距离 < 0.5m, 悬停等待机械臂
+  RETURNING    → 作业(目标)丢失, 返回阶段, 悬停等待 FSM 指令
+  ERROR        → 由 FSM/飞控层上报 (本节点不发布)
 """
 import rclpy
 from rclpy.node import Node
@@ -101,16 +103,19 @@ class ApproachController(Node):
                       now - self.last_target_time < self.target_timeout)
 
         if not has_target:
-            # 目标丢失 → 强制悬停
-            if self.state != 'SEARCHING' and self.state != 'HOVERING':
-                self.get_logger().warn(
-                    f'目标丢失 {now - self.last_target_time:.1f}s, 强制悬停!')
-            self._set_state('HOVERING')
-            self._publish_cmd_vel(0.0, 0.0, 0.0, 0.0)  # 悬停
+            # 目标丢失 → 悬停, 状态: 作业后丢失→RETURNING, 其余→SEARCHING
+            if self.state == 'BRUSHING':
+                self._set_state('RETURNING')
+            else:
+                self._set_state('SEARCHING')
+            self._publish_cmd_vel(0.0, 0.0, 0.0, 0.0)
             return
 
         if self.latest_drone_pose is None:
             return
+
+        if self.state == 'SEARCHING':
+            self._set_state('TARGET_FOUND')
 
         # 计算距离
         tx = self.latest_target.point.x
