@@ -112,8 +112,15 @@ ros2 topic pub -r 20 /uav/cmd_vel geometry_msgs/msg/Twist \
 ```
 NORMAL ──(HOLD 触发)──▶ SAFETY_HOLD ──(hold_mode_timeout 超时)──▶ SAFETY_SWITCHED
   ▲                        │ (期间: 停止转发外部 /attitude_setpoint,
-  └────(decision NOMINAL)──┘  改为内部水平+悬停推力设定值)
+  └─(FSM 触发且未锁存)────┘   改为内部水平+悬停推力设定值)
 ```
+
+- **锁存**: 链路故障触发的 HOLD 置 `_hold_latched`,普通 FSM 状态
+  (SEARCHING/TARGET_FOUND/APPROACHING/BRUSHING/RETURNING)不解除;
+  仅 `mavlink/safety_reset` 服务 + 链路健康校验通过可复位。
+- **首帧超时**: 启动 5 s 无 HEARTBEAT/LOCAL_POSITION_NED → ERROR + 锁存 HOLD。
+- **六态**: SEARCHING / TARGET_FOUND / APPROACHING / BRUSHING / RETURNING /
+  ERROR(HOVERING 已删除)。
 
 优先级(冻结,ERROR/超时时按序执行):
 
